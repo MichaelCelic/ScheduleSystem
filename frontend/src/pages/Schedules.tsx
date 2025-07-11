@@ -61,12 +61,13 @@ interface OnCallAssignments {
   WM: { [day: string]: string };
 }
 
-const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+const ECHO_LAB_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 const SHIFT_TYPES = ['Morning', 'Afternoon', 'Night'];
 const SCHEDULE_TYPES = ['Echo Lab', 'On Call'];
 
 const Schedules: React.FC = () => {
-  const { schedules, setSchedules, employees, locations } = useSchedulerContext();
+  const { schedules, setSchedules, employees, locations, generateSchedule, publishSchedule } = useSchedulerContext();
   const [selectedTab, setSelectedTab] = useState(0);
   const [openDialog, setOpenDialog] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null);
@@ -86,7 +87,7 @@ const Schedules: React.FC = () => {
 
   const ON_CALL_LOCATIONS = ['JDCH', 'W/M'];
 
-  const ON_CALL_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  const ON_CALL_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
   // Check if on-call schedule exists for the selected week
   const isOnCallSchedulePublished = (weekStart: Date): boolean => {
@@ -157,7 +158,7 @@ const Schedules: React.FC = () => {
   const NUM_DRAFT_SCHEDULES = 5; // Number of draft schedules to generate for Echo Lab
   const NUM_ONCALL_DRAFTS = 1; // Number of on-call draft schedules to generate (only 1 since it's manually editable)
 
-  const handleGenerateSchedule = () => {
+  const handleGenerateSchedule = async () => {
     try {
       if (scheduleType === 'Echo Lab') {
         // Check if on-call schedule is complete before allowing echo lab generation
@@ -170,43 +171,145 @@ const Schedules: React.FC = () => {
           setError('JDCH location not found');
           return;
         }
-        const newDrafts = Array.from({ length: NUM_DRAFT_SCHEDULES }).map(() => {
-          const generator = new ScheduleGenerator(
-            employees,
-            jdchLocation,
-            formData.weekStart!,
+
+        // Generate 5 different Echo Lab draft schedules
+        const newSchedules: Schedule[] = [];
+        const allDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+        
+        // Business rules for assignments
+        const assignmentOptions = ['Inpatients', 'Cath/Inpat.', 'OR/Inpat.', 'Sedat./Inpat.', 'MWH/MHM', 'THC', 'TX-Inpat.', 'PTO', 'N/A'];
+        
+        // Get all staff employees (exclude students for Echo Lab)
+        const staffEmployees = employees.filter(emp => emp.role === 'staff');
+        
+        // Find specific employees by name
+        const emilio = staffEmployees.find(emp => emp.name === 'Emilio');
+        const martha = staffEmployees.find(emp => emp.name === 'Martha');
+        
+        for (let i = 0; i < 5; i++) {
+          // Create assignments for all employees
+          const assignments: { [employeeName: string]: { [day: string]: string } } = {};
+          
+          staffEmployees.forEach(employee => {
+            assignments[employee.name] = {};
+            allDays.forEach(day => {
+              // Apply business rules
+              let assignment = '';
+              
+              // Rule 1: Martha only works M, T, TH, F (no Wednesday)
+              if (employee.name === 'Martha') {
+                if (day === 'Wednesday') {
+                  assignment = 'PTO';
+                } else if (day === 'Tuesday' || day === 'Friday') {
+                  // Rule 2: Tx-IP on Tuesday and Friday only staffed by Martha
+                  assignment = 'TX-Inpat.';
+                } else {
+                  // Random assignment for other days (avoid PTO for Martha on work days)
+                  const workOptions = assignmentOptions.filter(opt => opt !== 'PTO');
+                  assignment = workOptions[Math.floor(Math.random() * workOptions.length)];
+                }
+              }
+              // Rule 3: THC is always staffed by Emilio (except Friday)
+              else if (employee.name === 'Emilio' && day !== 'Friday') {
+                assignment = 'THC';
+              }
+              // Rule 4: No THC clinic on Friday
+              else if (day === 'Friday' && employee.name === 'Emilio') {
+                assignment = assignmentOptions.filter(opt => opt !== 'THC')[Math.floor(Math.random() * (assignmentOptions.length - 1))];
+              }
+              else {
+                // Random assignment for other employees/days
+                // Reduce PTO probability to make schedules more realistic
+                const random = Math.random();
+                if (random < 0.1) { // 10% chance of PTO
+                  assignment = 'PTO';
+                } else {
+                  const workOptions = assignmentOptions.filter(opt => opt !== 'PTO');
+                  assignment = workOptions[Math.floor(Math.random() * workOptions.length)];
+                }
+              }
+              
+              assignments[employee.name][day] = assignment;
+            });
+          });
+          
+          // Rule 5: Person assigned to JDCH call is OR/IP shift on that same assigned day
+          // Get the on-call schedule for this week to apply this rule
+          const onCallSchedule = schedules.find(s => 
+            s.status === 'published' && 
+            s.type === 'oncall' && 
+            s.weekStart.getTime() === formData.weekStart!.getTime()
           );
-          return { ...generator.generateSchedule(), type: 'echolab' };
-        });
+          
+          if (onCallSchedule) {
+            allDays.forEach(day => {
+              const jdchOnCallEmployee = onCallSchedule.assignments?.JDCH?.[day];
+              if (jdchOnCallEmployee && assignments[jdchOnCallEmployee]) {
+                assignments[jdchOnCallEmployee][day] = 'OR/Inpat.';
+              }
+            });
+          }
+
+          const newSchedule: Schedule = {
+            id: Date.now().toString() + Math.random().toString(36).substring(2) + i,
+            locationId: jdchLocation.id,
+            locationName: jdchLocation.name,
+            weekStart: formData.weekStart!,
+            assignments: assignments,
+            status: 'draft' as 'draft',
+            type: 'echolab',
+          };
+          
+          newSchedules.push(newSchedule);
+        }
+
+        // Add all new schedules to the state
         setSchedules(prev => [
           ...prev.filter(s => !(s.status === 'draft' && s.type === 'echolab')),
-          ...newDrafts
+          ...newSchedules
         ]);
         setSelectedDraftTab(0); // Switch to Echo Lab tab
         handleCloseDialog();
       } else if (scheduleType === 'On Call') {
-        // Exclude students from On Call
-        const onCallEmployees = employees.filter(emp => emp.role !== 'student');
-        const newOnCallDrafts = Array.from({ length: NUM_ONCALL_DRAFTS }).map(() => {
-          const assignments: OnCallAssignments = { JDCH: {}, WM: {} };
-          // Create empty assignments that can be manually filled
-          DAYS_OF_WEEK.forEach((day) => {
-            assignments.JDCH[day] = '';
-            assignments.WM[day] = '';
-          });
-          return {
-            id: Date.now().toString() + Math.random().toString(36).substring(2),
-            locationId: 'oncall',
-            locationName: 'On Call',
-            weekStart: formData.weekStart!,
-            assignments: assignments as any,
-            status: 'draft' as 'draft',
-            type: 'oncall',
-          };
+        // Call backend to generate on-call schedule
+        const result = await generateSchedule({
+          variables: {
+            weekStart: formData.weekStart!.toISOString().split('T')[0], // Convert to YYYY-MM-DD format
+            scheduleType: 'oncall'
+          }
         });
+
+        // Create on-call schedule structure
+        const newOnCallSchedule = {
+          id: Date.now().toString() + Math.random().toString(36).substring(2),
+          locationId: 'oncall',
+          locationName: 'On Call',
+          weekStart: formData.weekStart!,
+          assignments: { JDCH: {}, WM: {} } as any,
+          status: 'draft' as 'draft',
+          type: 'oncall',
+        };
+
+        // Always initialize all days for both locations
+        const allDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        const jdchAssignments: { [day: string]: string } = {};
+        const wmAssignments: { [day: string]: string } = {};
+        allDays.forEach(day => {
+          jdchAssignments[day] = '';
+          wmAssignments[day] = '';
+        });
+
+        // Don't auto-populate from backend shifts - let user manually assign
+        // The backend generates the schedule but frontend should start with empty assignments
+        // for manual editing
+
+        // Assign to schedule
+        newOnCallSchedule.assignments.JDCH = jdchAssignments;
+        newOnCallSchedule.assignments.WM = wmAssignments;
+
         setSchedules(prev => [
           ...prev.filter(s => !(s.status === 'draft' && s.type === 'oncall')),
-          ...newOnCallDrafts
+          newOnCallSchedule
         ]);
         setSelectedDraftTab(1); // Switch to On Call tab
         handleCloseDialog();
@@ -216,12 +319,27 @@ const Schedules: React.FC = () => {
     }
   };
 
-  const handlePublishSchedule = (scheduleId: string) => {
-    setSchedules(schedules.map(schedule =>
-      schedule.id === scheduleId
-        ? { ...schedule, status: 'published' }
-        : schedule
-    ));
+  const handlePublishSchedule = async (scheduleId: string) => {
+    try {
+      const schedule = schedules.find(s => s.id === scheduleId);
+      if (!schedule) return;
+
+      // Call backend to publish schedule
+      await publishSchedule({
+        variables: {
+          weekStart: schedule.weekStart.toISOString().split('T')[0] // Convert to YYYY-MM-DD format
+        }
+      });
+
+      // Update local state
+      setSchedules(schedules.map(s =>
+        s.id === scheduleId
+          ? { ...s, status: 'published' }
+          : s
+      ));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred while publishing the schedule');
+    }
   };
 
   const handleDeleteSchedule = (scheduleId: string) => {
@@ -429,7 +547,7 @@ const Schedules: React.FC = () => {
                                 <TableHead>
                                   <TableRow>
                                     <TableCell>Employee</TableCell>
-                                    {DAYS_OF_WEEK.map((day) => (
+                                    {ECHO_LAB_DAYS.map((day) => (
                                       <TableCell key={day}>{day}</TableCell>
                                     ))}
                                   </TableRow>
@@ -438,7 +556,7 @@ const Schedules: React.FC = () => {
                                   {Object.keys(schedule.assignments).map((employee) => (
                                     <TableRow key={employee}>
                                       <TableCell>{employee}</TableCell>
-                                      {DAYS_OF_WEEK.map((day) => (
+                                      {ECHO_LAB_DAYS.map((day) => (
                                         <TableCell key={day}>
                                           <FormControl size="small" fullWidth>
                                             <Select
@@ -503,45 +621,52 @@ const Schedules: React.FC = () => {
                     <Typography color="text.secondary" sx={{ mb: 1 }}>
                       Week of {format(schedule.weekStart, 'MMM d, yyyy')}
                     </Typography>
-                    <Table>
-                      <TableHead>
-                        <TableRow>
-                          <TableCell></TableCell>
-                          {DAYS_OF_WEEK.map((day) => (
-                            <TableCell key={day}>{day}</TableCell>
-                          ))}
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {['JDCH', 'WM'].map((loc) => (
-                          <TableRow key={loc}>
-                            <TableCell>On Call {loc === 'WM' ? 'W/M' : loc}</TableCell>
-                            {DAYS_OF_WEEK.map((day) => (
-                              <TableCell key={day}>
-                                <FormControl size="small" fullWidth>
-                                  <Select
-                                    value={schedule.assignments?.[loc]?.[day] || ''}
-                                    onChange={(e) => handleOnCallAssignment(schedule.id, loc, day, e.target.value)}
-                                    displayEmpty
-                                  >
-                                    <MenuItem value="">
-                                      <em>Select Employee</em>
-                                    </MenuItem>
-                                    {employees
-                                      .filter(emp => emp.role !== 'student') // Exclude students from on-call
-                                      .map((emp) => (
-                                        <MenuItem key={emp.id} value={emp.name}>
-                                          {emp.name}
-                                        </MenuItem>
-                                      ))}
-                                  </Select>
-                                </FormControl>
-                              </TableCell>
+                    <Box sx={{ overflow: 'hidden', borderRadius: 1 }}>
+                      <Table sx={{
+                        '& .MuiTableCell-root': {
+                          paddingLeft: 1,
+                          paddingRight: 1
+                        }
+                      }}>
+                        <TableHead>
+                          <TableRow>
+                            <TableCell></TableCell>
+                            {ON_CALL_DAYS.map((day) => (
+                              <TableCell key={day}>{day}</TableCell>
                             ))}
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                        </TableHead>
+                        <TableBody>
+                          {['JDCH', 'WM'].map((loc) => (
+                            <TableRow key={loc}>
+                              <TableCell>On Call {loc === 'WM' ? 'W/M' : loc}</TableCell>
+                              {ON_CALL_DAYS.map((day) => (
+                                <TableCell key={day}>
+                                  <FormControl size="small" fullWidth>
+                                    <Select
+                                      value={schedule.assignments?.[loc]?.[day] || ''}
+                                      onChange={(e) => handleOnCallAssignment(schedule.id, loc, day, e.target.value)}
+                                      displayEmpty
+                                    >
+                                      <MenuItem value="">
+                                        <em>Select Employee</em>
+                                      </MenuItem>
+                                      {employees
+                                        .filter(emp => emp.role !== 'student') // Exclude students from on-call
+                                        .map((emp) => (
+                                          <MenuItem key={emp.id} value={emp.name}>
+                                            {emp.name}
+                                          </MenuItem>
+                                        ))}
+                                    </Select>
+                                  </FormControl>
+                                </TableCell>
+                              ))}
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </Box>
                     <Box sx={{ mt: 1 }}>
                       <Button
                         variant="contained"
@@ -604,45 +729,52 @@ const Schedules: React.FC = () => {
                 </Typography>
               </Alert>
               
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell></TableCell>
-                    {DAYS_OF_WEEK.map((day) => (
-                      <TableCell key={day}>{day}</TableCell>
-                    ))}
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {['JDCH', 'WM'].map((loc) => (
-                    <TableRow key={loc}>
-                      <TableCell>On Call {loc === 'WM' ? 'W/M' : loc}</TableCell>
-                      {DAYS_OF_WEEK.map((day) => (
-                        <TableCell key={day}>
-                          <FormControl size="small" fullWidth>
-                            <Select
-                              value={schedule.assignments?.[loc]?.[day] || ''}
-                              onChange={(e) => handleOnCallAssignment(schedule.id, loc, day, e.target.value)}
-                              displayEmpty
-                            >
-                              <MenuItem value="">
-                                <em>Select Employee</em>
-                              </MenuItem>
-                              {employees
-                                .filter(emp => emp.role !== 'student') // Exclude students from on-call
-                                .map((emp) => (
-                                  <MenuItem key={emp.id} value={emp.name}>
-                                    {emp.name}
-                                  </MenuItem>
-                                ))}
-                            </Select>
-                          </FormControl>
-                        </TableCell>
+              <Box sx={{ overflow: 'hidden', borderRadius: 1 }}>
+                <Table sx={{
+                  '& .MuiTableCell-root': {
+                    paddingLeft: 1,
+                    paddingRight: 1
+                  }
+                }}>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell></TableCell>
+                      {ON_CALL_DAYS.map((day) => (
+                        <TableCell key={day}>{day}</TableCell>
                       ))}
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHead>
+                  <TableBody>
+                    {['JDCH', 'WM'].map((loc) => (
+                      <TableRow key={loc}>
+                        <TableCell>On Call {loc === 'WM' ? 'W/M' : loc}</TableCell>
+                        {ON_CALL_DAYS.map((day) => (
+                          <TableCell key={day}>
+                            <FormControl size="small" fullWidth>
+                              <Select
+                                value={schedule.assignments?.[loc]?.[day] || ''}
+                                onChange={(e) => handleOnCallAssignment(schedule.id, loc, day, e.target.value)}
+                                displayEmpty
+                              >
+                                <MenuItem value="">
+                                  <em>Select Employee</em>
+                                </MenuItem>
+                                {employees
+                                  .filter(emp => emp.role !== 'student') // Exclude students from on-call
+                                  .map((emp) => (
+                                    <MenuItem key={emp.id} value={emp.name}>
+                                      {emp.name}
+                                    </MenuItem>
+                                  ))}
+                              </Select>
+                            </FormControl>
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Box>
             </Box>
           ))}
           {/* Published Echo Lab schedules next */}
@@ -678,7 +810,7 @@ const Schedules: React.FC = () => {
                             <TableHead>
                               <TableRow>
                                 <TableCell>Employee</TableCell>
-                                {DAYS_OF_WEEK.map((day) => (
+                                {ECHO_LAB_DAYS.map((day) => (
                                   <TableCell key={day}>{day}</TableCell>
                                 ))}
                               </TableRow>
@@ -687,7 +819,7 @@ const Schedules: React.FC = () => {
                               {Object.keys(schedule.assignments).map((employee) => (
                                 <TableRow key={employee}>
                                   <TableCell>{employee}</TableCell>
-                                  {DAYS_OF_WEEK.map((day) => (
+                                  {ECHO_LAB_DAYS.map((day) => (
                                     <TableCell key={day}>
                                       <FormControl size="small" fullWidth>
                                         <Select

@@ -1,4 +1,4 @@
-import React, { createContext, useContext } from 'react';
+import React, { createContext, useContext, useState } from 'react';
 import { useQuery, useMutation, ApolloClient, InMemoryCache, ApolloProvider } from '@apollo/client';
 import { GET_EMPLOYEES, GET_LOCATIONS, GET_SCHEDULES } from '../../graphql/queries';
 import { ADD_EMPLOYEE, UPDATE_EMPLOYEE, DELETE_EMPLOYEE, ADD_LOCATION, UPDATE_LOCATION, DELETE_LOCATION, GENERATE_SCHEDULE, PUBLISH_SCHEDULE } from '../../graphql/mutations';
@@ -81,6 +81,9 @@ export const SchedulerProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const { data: employeesData, loading: employeesLoading, error: employeesError, refetch: refetchEmployees } = useQuery(GET_EMPLOYEES);
   const { data: locationsData, loading: locationsLoading, error: locationsError, refetch: refetchLocations } = useQuery(GET_LOCATIONS);
   const { data: schedulesData, loading: schedulesLoading, error: schedulesError, refetch: refetchSchedules } = useQuery(GET_SCHEDULES);
+
+  // Local state for schedules (to allow frontend to manage draft schedules)
+  const [localSchedules, setLocalSchedules] = useState<Schedule[]>([]);
 
   // Mutations
   const [addEmployee] = useMutation(ADD_EMPLOYEE, {
@@ -169,16 +172,19 @@ export const SchedulerProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // State
   const employees = transformEmployees(employeesData?.employees || []);
   const locations = transformLocations(locationsData?.locations || []);
-  const schedules = transformSchedules(schedulesData?.schedules || []);
+  const backendSchedules = transformSchedules(schedulesData?.schedules || []);
   const pendingRequests: PendingRequest[] = []; // Placeholder for now
+
+  // Combine backend schedules (published) with local schedules (drafts)
+  const schedules = [...backendSchedules, ...localSchedules];
 
   const loading = employeesLoading || locationsLoading || schedulesLoading;
   const error = employeesError || locationsError || schedulesError;
 
-  // Dummy setter functions to maintain interface compatibility
+  // Proper setter functions for local state management
   const setEmployees = () => {}; // Will be replaced with mutations
   const setLocations = () => {}; // Will be replaced with mutations
-  const setSchedules = () => {}; // Will be replaced with mutations
+  const setSchedules = setLocalSchedules; // Use local state setter
   const setPendingRequests = () => {}; // Placeholder
 
   return (

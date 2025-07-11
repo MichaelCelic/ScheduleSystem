@@ -69,24 +69,29 @@ export const DELETE_LOCATION = gql`
 `;
 
 export const GENERATE_SCHEDULE = gql`
-  mutation GenerateSchedule($locationId: UUID!, $weekStart: Date!) {
-    generateSchedule(locationId: $locationId, weekStart: $weekStart) {
+  mutation GenerateSchedule($weekStart: Date!, $scheduleType: String!) {
+    generateSchedule(weekStart: $weekStart, scheduleType: $scheduleType) {
       id
+      employeeId
       locationId
-      locationName
-      weekStart
-      assignments
-      status
-      type
+      date
+      startTime
+      endTime
+      published
     }
   }
 `;
 
 export const PUBLISH_SCHEDULE = gql`
-  mutation PublishSchedule($id: UUID!) {
-    publishSchedule(id: $id) {
+  mutation PublishSchedule($weekStart: Date!) {
+    publishSchedule(weekStart: $weekStart) {
       id
-      status
+      employeeId
+      locationId
+      date
+      startTime
+      endTime
+      published
     }
   }
 `; 

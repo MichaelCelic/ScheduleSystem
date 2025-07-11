@@ -64,6 +64,10 @@ const Employees: React.FC = () => {
     },
   });
   const [saving, setSaving] = useState(false);
+  
+  // Confirmation dialog state
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [employeeToDelete, setEmployeeToDelete] = useState<Employee | null>(null);
 
   const handleOpenDialog = (employee?: Employee) => {
     if (employee) {
@@ -148,6 +152,30 @@ const Employees: React.FC = () => {
     }
   };
 
+  const handleDeleteClick = (employee: Employee) => {
+    setEmployeeToDelete(employee);
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!employeeToDelete) return;
+    
+    try {
+      await deleteEmployee({
+        variables: { id: employeeToDelete.id }
+      });
+      setDeleteConfirmOpen(false);
+      setEmployeeToDelete(null);
+    } catch (error) {
+      console.error('Error deleting employee:', error);
+    }
+  };
+
+  const handleCancelDelete = () => {
+    setDeleteConfirmOpen(false);
+    setEmployeeToDelete(null);
+  };
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
@@ -190,7 +218,7 @@ const Employees: React.FC = () => {
                     <IconButton onClick={() => handleOpenDialog(employee)}>
                       <EditIcon />
                     </IconButton>
-                    <IconButton onClick={() => handleDeleteEmployee(employee.id)}>
+                    <IconButton onClick={() => handleDeleteClick(employee)}>
                       <DeleteIcon />
                     </IconButton>
                   </Box>
@@ -337,6 +365,33 @@ const Employees: React.FC = () => {
             ) : (
               editingEmployee ? 'Save Changes' : 'Add Employee'
             )}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteConfirmOpen} onClose={handleCancelDelete} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          Confirm Delete
+        </DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to delete <strong>{employeeToDelete?.name}</strong>?
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            This action cannot be undone. All employee data including availability preferences and shift assignments will be permanently removed.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCancelDelete}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleConfirmDelete} 
+            variant="contained" 
+            color="error"
+          >
+            Delete Employee
           </Button>
         </DialogActions>
       </Dialog>

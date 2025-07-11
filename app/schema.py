@@ -175,6 +175,14 @@ class Mutation:
             employee = session.get(Employee, id)
             if not employee:
                 return False
+            
+            # Delete related EmployeeAvailabilityLink records first
+            session.exec(delete(EmployeeAvailabilityLink).where(EmployeeAvailabilityLink.employee_id == id))
+            
+            # Delete related Shift records
+            session.exec(delete(Shift).where(Shift.employee_id == id))
+            
+            # Now delete the employee
             session.delete(employee)
             session.commit()
             return True
