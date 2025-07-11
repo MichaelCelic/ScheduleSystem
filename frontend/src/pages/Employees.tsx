@@ -18,6 +18,8 @@ import {
   MenuItem,
   Chip,
   Stack,
+  Alert,
+  CircularProgress,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -41,7 +43,15 @@ const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'S
 const SHIFT_TYPES = ['Morning (6AM-2PM)', 'Afternoon (2PM-10PM)', 'Night (10PM-6AM)'];
 
 const Employees: React.FC = () => {
-  const { employees, setEmployees } = useSchedulerContext();
+  const { 
+    employees, 
+    loading, 
+    error, 
+    addEmployee, 
+    updateEmployee, 
+    deleteEmployee 
+  } = useSchedulerContext();
+  
   const [openDialog, setOpenDialog] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [formData, setFormData] = useState<Partial<Employee>>({
@@ -53,6 +63,7 @@ const Employees: React.FC = () => {
       preferredShifts: [],
     },
   });
+  const [saving, setSaving] = useState(false);
 
   const handleOpenDialog = (employee?: Employee) => {
     if (employee) {
@@ -76,36 +87,84 @@ const Employees: React.FC = () => {
   const handleCloseDialog = () => {
     setOpenDialog(false);
     setEditingEmployee(null);
+    setSaving(false);
   };
 
-  const handleSaveEmployee = () => {
+  const handleSaveEmployee = async () => {
     if (!formData.name) return;
 
-    const newEmployee: Employee = {
-      id: editingEmployee?.id || Date.now().toString(),
-      name: formData.name!,
-      role: formData.role || 'staff',
-      availability: {
-        days: formData.availability?.days || [],
+    setSaving(true);
+
+    try {
+      const employeeData = {
+        name: formData.name!,
+        age: 25, // Default age since frontend doesn't collect it
+        role: formData.role?.toUpperCase() || 'STAFF',
         maxHoursPerDay: formData.availability?.maxHoursPerDay || 8,
-        preferredShifts: formData.availability?.preferredShifts || [],
-      },
-    };
+        availability: formData.availability?.days?.map(day => {
+          const dayMap: { [key: string]: string } = {
+            'Monday': 'MON',
+            'Tuesday': 'TUE',
+            'Wednesday': 'WED',
+            'Thursday': 'THU',
+            'Friday': 'FRI',
+            'Saturday': 'SAT',
+            'Sunday': 'SUN'
+          };
+          return dayMap[day] || day.toUpperCase().substring(0, 3);
+        }) || [],
+        preferredShifts: formData.availability?.preferredShifts || []
+      };
 
-    if (editingEmployee) {
-      setEmployees(employees.map(emp =>
-        emp.id === editingEmployee.id ? newEmployee : emp
-      ));
-    } else {
-      setEmployees([...employees, newEmployee]);
+      if (editingEmployee) {
+        await updateEmployee({
+          variables: {
+            id: editingEmployee.id,
+            input: employeeData
+          }
+        });
+      } else {
+        await addEmployee({
+          variables: {
+            input: employeeData
+          }
+        });
+      }
+
+      handleCloseDialog();
+    } catch (error) {
+      console.error('Error saving employee:', error);
+      setSaving(false);
     }
-
-    handleCloseDialog();
   };
 
-  const handleDeleteEmployee = (employeeId: string) => {
-    setEmployees(employees.filter(emp => emp.id !== employeeId));
+  const handleDeleteEmployee = async (employeeId: string) => {
+    try {
+      await deleteEmployee({
+        variables: { id: employeeId }
+      });
+    } catch (error) {
+      console.error('Error deleting employee:', error);
+    }
   };
+
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (error) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Alert severity="error">
+          Error loading employees: {error.message}
+        </Alert>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ p: 3 }}>
@@ -265,9 +324,19 @@ const Employees: React.FC = () => {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseDialog}>Cancel</Button>
-          <Button onClick={handleSaveEmployee} variant="contained">
-            {editingEmployee ? 'Save Changes' : 'Add Employee'}
+          <Button onClick={handleCloseDialog} disabled={saving}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleSaveEmployee} 
+            variant="contained"
+            disabled={saving || !formData.name}
+          >
+            {saving ? (
+              <CircularProgress size={20} />
+            ) : (
+              editingEmployee ? 'Save Changes' : 'Add Employee'
+            )}
           </Button>
         </DialogActions>
       </Dialog>

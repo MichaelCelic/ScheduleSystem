@@ -12,6 +12,8 @@ import {
   IconButton,
   TextField,
   Typography,
+  Alert,
+  CircularProgress,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -23,7 +25,15 @@ import { useSchedulerContext, Location as SchedulerLocation } from '../component
 type Location = SchedulerLocation;
 
 const Locations: React.FC = () => {
-  const { locations, setLocations } = useSchedulerContext();
+  const { 
+    locations, 
+    loading, 
+    error, 
+    addLocation, 
+    updateLocation, 
+    deleteLocation 
+  } = useSchedulerContext();
+  
   const [openDialog, setOpenDialog] = useState(false);
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
   const [formData, setFormData] = useState<Partial<Location>>({
@@ -36,6 +46,7 @@ const Locations: React.FC = () => {
     },
     notes: '',
   });
+  const [saving, setSaving] = useState(false);
 
   const handleOpenDialog = (location?: Location) => {
     if (location) {
@@ -60,37 +71,73 @@ const Locations: React.FC = () => {
   const handleCloseDialog = () => {
     setOpenDialog(false);
     setEditingLocation(null);
+    setSaving(false);
   };
 
-  const handleSaveLocation = () => {
+  const handleSaveLocation = async () => {
     if (!formData.name || !formData.address) return;
 
-    const newLocation: Location = {
-      id: editingLocation?.id || Date.now().toString(),
-      name: formData.name,
-      address: formData.address,
-      requiredStaff: {
-        morning: formData.requiredStaff?.morning || 2,
-        afternoon: formData.requiredStaff?.afternoon || 2,
-        night: formData.requiredStaff?.night || 1,
-      },
-      notes: formData.notes,
-    };
+    setSaving(true);
 
-    if (editingLocation) {
-      setLocations(locations.map(loc =>
-        loc.id === editingLocation.id ? newLocation : loc
-      ));
-    } else {
-      setLocations([...locations, newLocation]);
+    try {
+      const locationData = {
+        name: formData.name,
+        address: formData.address,
+        requiredStaffMorning: formData.requiredStaff?.morning || 2,
+        requiredStaffAfternoon: formData.requiredStaff?.afternoon || 2,
+        requiredStaffNight: formData.requiredStaff?.night || 1,
+        notes: formData.notes || '',
+      };
+
+      if (editingLocation) {
+        await updateLocation({
+          variables: {
+            id: editingLocation.id,
+            input: locationData
+          }
+        });
+      } else {
+        await addLocation({
+          variables: {
+            input: locationData
+          }
+        });
+      }
+
+      handleCloseDialog();
+    } catch (error) {
+      console.error('Error saving location:', error);
+      setSaving(false);
     }
-
-    handleCloseDialog();
   };
 
-  const handleDeleteLocation = (locationId: string) => {
-    setLocations(locations.filter(loc => loc.id !== locationId));
+  const handleDeleteLocation = async (locationId: string) => {
+    try {
+      await deleteLocation({
+        variables: { id: locationId }
+      });
+    } catch (error) {
+      console.error('Error deleting location:', error);
+    }
   };
+
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (error) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Alert severity="error">
+          Error loading locations: {error.message}
+        </Alert>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ p: 3 }}>
@@ -251,9 +298,19 @@ const Locations: React.FC = () => {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseDialog}>Cancel</Button>
-          <Button onClick={handleSaveLocation} variant="contained">
-            {editingLocation ? 'Save Changes' : 'Add Location'}
+          <Button onClick={handleCloseDialog} disabled={saving}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleSaveLocation} 
+            variant="contained"
+            disabled={saving || !formData.name || !formData.address}
+          >
+            {saving ? (
+              <CircularProgress size={20} />
+            ) : (
+              editingLocation ? 'Save Changes' : 'Add Location'
+            )}
           </Button>
         </DialogActions>
       </Dialog>

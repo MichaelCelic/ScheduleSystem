@@ -1,4 +1,13 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext } from 'react';
+import { useQuery, useMutation, ApolloClient, InMemoryCache, ApolloProvider } from '@apollo/client';
+import { GET_EMPLOYEES, GET_LOCATIONS, GET_SCHEDULES } from '../../graphql/queries';
+import { ADD_EMPLOYEE, UPDATE_EMPLOYEE, DELETE_EMPLOYEE, ADD_LOCATION, UPDATE_LOCATION, DELETE_LOCATION, GENERATE_SCHEDULE, PUBLISH_SCHEDULE } from '../../graphql/mutations';
+
+// Create Apollo Client
+const client = new ApolloClient({
+  uri: 'http://localhost:8000/graphql',
+  cache: new InMemoryCache(),
+});
 
 // Employee type
 export interface Employee {
@@ -53,132 +62,146 @@ interface SchedulerContextType {
   setSchedules: React.Dispatch<React.SetStateAction<Schedule[]>>;
   pendingRequests: PendingRequest[];
   setPendingRequests: React.Dispatch<React.SetStateAction<PendingRequest[]>>;
+  loading: boolean;
+  error: any;
+  addEmployee: any;
+  updateEmployee: any;
+  deleteEmployee: any;
+  addLocation: any;
+  updateLocation: any;
+  deleteLocation: any;
+  generateSchedule: any;
+  publishSchedule: any;
 }
 
 const SchedulerContext = createContext<SchedulerContextType | undefined>(undefined);
 
 export const SchedulerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [employees, setEmployees] = useState<Employee[]>([
-    {
-      id: '1',
-      name: 'Martha',
-      role: 'staff',
+  // Queries
+  const { data: employeesData, loading: employeesLoading, error: employeesError, refetch: refetchEmployees } = useQuery(GET_EMPLOYEES);
+  const { data: locationsData, loading: locationsLoading, error: locationsError, refetch: refetchLocations } = useQuery(GET_LOCATIONS);
+  const { data: schedulesData, loading: schedulesLoading, error: schedulesError, refetch: refetchSchedules } = useQuery(GET_SCHEDULES);
+
+  // Mutations
+  const [addEmployee] = useMutation(ADD_EMPLOYEE, {
+    onCompleted: () => refetchEmployees(),
+  });
+  const [updateEmployee] = useMutation(UPDATE_EMPLOYEE, {
+    onCompleted: () => refetchEmployees(),
+  });
+  const [deleteEmployee] = useMutation(DELETE_EMPLOYEE, {
+    onCompleted: () => refetchEmployees(),
+  });
+  const [addLocation] = useMutation(ADD_LOCATION, {
+    onCompleted: () => refetchLocations(),
+  });
+  const [updateLocation] = useMutation(UPDATE_LOCATION, {
+    onCompleted: () => refetchLocations(),
+  });
+  const [deleteLocation] = useMutation(DELETE_LOCATION, {
+    onCompleted: () => refetchLocations(),
+  });
+  const [generateSchedule] = useMutation(GENERATE_SCHEDULE, {
+    onCompleted: () => refetchSchedules(),
+  });
+  const [publishSchedule] = useMutation(PUBLISH_SCHEDULE, {
+    onCompleted: () => refetchSchedules(),
+  });
+
+  // Transform backend data to frontend format
+  const transformEmployees = (backendEmployees: any[]): Employee[] => {
+    if (!backendEmployees) return [];
+    
+    return backendEmployees.map(emp => ({
+      id: emp.id,
+      name: emp.name,
+      role: emp.role.toLowerCase() as 'staff' | 'student',
       availability: {
-        days: ['Monday', 'Tuesday', 'Thursday', 'Friday', 'Saturday'],
-        maxHoursPerDay: 10.5,
-        preferredShifts: ['Morning (6AM-2PM)', 'Afternoon (2PM-10PM)'],
+        days: emp.availability?.map((day: any) => {
+          // Convert enum values back to full day names
+          const dayMap: { [key: string]: string } = {
+            'MON': 'Monday',
+            'TUE': 'Tuesday', 
+            'WED': 'Wednesday',
+            'THU': 'Thursday',
+            'FRI': 'Friday',
+            'SAT': 'Saturday',
+            'SUN': 'Sunday'
+          };
+          return dayMap[day] || day;
+        }) || [],
+        maxHoursPerDay: emp.maxHoursPerDay || 8,
+        preferredShifts: emp.preferredShifts || [],
       },
-    },
-    {
-      id: '2',
-      name: 'Grisel',
-      role: 'staff',
-      availability: {
-        days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
-        maxHoursPerDay: 8.5,
-        preferredShifts: ['Morning (6AM-2PM)', 'Afternoon (2PM-10PM)'],
-      },
-    },
-    {
-      id: '3',
-      name: 'Emilio',
-      role: 'staff',
-      availability: {
-        days: ['Tuesday', 'Wednesday', 'Thursday', 'Friday'],
-        maxHoursPerDay: 8.5,
-        preferredShifts: ['Afternoon (2PM-10PM)', 'Night (10PM-6AM)'],
-      },
-    },
-    {
-      id: '4',
-      name: 'Annie',
-      role: 'staff',
-      availability: {
-        days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
-        maxHoursPerDay: 8.5,
-        preferredShifts: ['Morning (6AM-2PM)', 'Night (10PM-6AM)'],
-      },
-    },
-    {
-      id: '5',
-      name: 'Angela',
-      role: 'staff',
-      availability: {
-        days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
-        maxHoursPerDay: 8.5,
-        preferredShifts: ['Afternoon (2PM-10PM)', 'Night (10PM-6AM)'],
-      },
-    },
-    {
-      id: '6',
-      name: 'Alexandra',
-      role: 'staff',
-      availability: {
-        days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
-        maxHoursPerDay: 8.5,
-        preferredShifts: ['Morning (6AM-2PM)', 'Afternoon (2PM-10PM)'],
-      },
-    },
-    {
-      id: '7',
-      name: 'Shannon',
-      role: 'staff',
-      availability: {
-        days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
-        maxHoursPerDay: 8.5,
-        preferredShifts: ['Night (10PM-6AM)', 'Afternoon (2PM-10PM)'],
-      },
-    },
-    {
-      id: '8',
-      name: 'Guadalupe',
-      role: 'staff',
-      availability: {
-        days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
-        maxHoursPerDay: 8.5,
-        preferredShifts: ['Morning (6AM-2PM)', 'Night (10PM-6AM)'],
-      },
-    },
-    {
-      id: '9',
-      name: 'William',
-      role: 'student',
-      availability: {
-        days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday'],
-        maxHoursPerDay: 8,
-        preferredShifts: ['Morning (6AM-2PM)', 'Afternoon (2PM-10PM)', 'Night (10PM-6AM)'],
-      },
-    },
-  ]);
-  const [locations, setLocations] = useState<Location[]>([
-    {
-      id: 'location1',
-      name: 'JDCH',
-      address: '123 JDCH Ave',
+    }));
+  };
+
+  const transformLocations = (backendLocations: any[]): Location[] => {
+    if (!backendLocations) return [];
+    
+    return backendLocations.map(loc => ({
+      id: loc.id,
+      name: loc.name,
+      address: loc.address,
       requiredStaff: {
-        morning: 3,
-        afternoon: 3,
-        night: 2,
+        morning: loc.requiredStaffMorning || 2,
+        afternoon: loc.requiredStaffAfternoon || 2,
+        night: loc.requiredStaffNight || 1,
       },
-      notes: '',
-    },
-    {
-      id: 'location2',
-      name: 'W/M',
-      address: '456 W/M Blvd',
-      requiredStaff: {
-        morning: 2,
-        afternoon: 2,
-        night: 1,
-      },
-      notes: '',
-    },
-  ]);
-  const [schedules, setSchedules] = useState<Schedule[]>([]);
-  const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([]);
+      notes: loc.notes,
+    }));
+  };
+
+  const transformSchedules = (backendSchedules: any[]): Schedule[] => {
+    if (!backendSchedules) return [];
+    
+    return backendSchedules.map(sched => ({
+      id: sched.id,
+      locationId: sched.locationId,
+      locationName: sched.locationName,
+      weekStart: new Date(sched.weekStart),
+      assignments: sched.assignments,
+      status: sched.status,
+      type: sched.type,
+    }));
+  };
+
+  // State
+  const employees = transformEmployees(employeesData?.employees || []);
+  const locations = transformLocations(locationsData?.locations || []);
+  const schedules = transformSchedules(schedulesData?.schedules || []);
+  const pendingRequests: PendingRequest[] = []; // Placeholder for now
+
+  const loading = employeesLoading || locationsLoading || schedulesLoading;
+  const error = employeesError || locationsError || schedulesError;
+
+  // Dummy setter functions to maintain interface compatibility
+  const setEmployees = () => {}; // Will be replaced with mutations
+  const setLocations = () => {}; // Will be replaced with mutations
+  const setSchedules = () => {}; // Will be replaced with mutations
+  const setPendingRequests = () => {}; // Placeholder
 
   return (
-    <SchedulerContext.Provider value={{ employees, setEmployees, locations, setLocations, schedules, setSchedules, pendingRequests, setPendingRequests }}>
+    <SchedulerContext.Provider value={{ 
+      employees, 
+      setEmployees, 
+      locations, 
+      setLocations, 
+      schedules, 
+      setSchedules, 
+      pendingRequests, 
+      setPendingRequests,
+      loading,
+      error,
+      addEmployee,
+      updateEmployee,
+      deleteEmployee,
+      addLocation,
+      updateLocation,
+      deleteLocation,
+      generateSchedule,
+      publishSchedule,
+    }}>
       {children}
     </SchedulerContext.Provider>
   );
@@ -188,4 +211,13 @@ export function useSchedulerContext() {
   const ctx = useContext(SchedulerContext);
   if (!ctx) throw new Error('useSchedulerContext must be used within a SchedulerProvider');
   return ctx;
-} 
+}
+
+// Export Apollo Provider wrapper
+export const ApolloWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <ApolloProvider client={client}>
+    <SchedulerProvider>
+      {children}
+    </SchedulerProvider>
+  </ApolloProvider>
+); 

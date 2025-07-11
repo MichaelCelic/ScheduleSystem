@@ -7,7 +7,7 @@ import Dashboard from './pages/Dashboard';
 import Employees from './pages/Employees';
 import Locations from './pages/Locations';
 import Schedules from './pages/Schedules';
-import { SchedulerProvider } from './components/layout/SchedulerContext';
+import { ApolloWrapper } from './components/layout/SchedulerContext';
 
 // Create theme
 const theme = createTheme({
@@ -52,7 +52,7 @@ const App: React.FC = () => {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <SchedulerProvider>
+      <ApolloWrapper>
         <Router>
           <Layout>
             <Routes>
@@ -63,7 +63,7 @@ const App: React.FC = () => {
             </Routes>
           </Layout>
         </Router>
-      </SchedulerProvider>
+      </ApolloWrapper>
     </ThemeProvider>
   );
 };
