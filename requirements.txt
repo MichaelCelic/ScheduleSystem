@@ -4,4 +4,5 @@ sqlmodel
 sqlalchemy
 pydantic
 uvicorn
-pytest 
+pytest
+typer 

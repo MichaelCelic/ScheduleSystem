@@ -94,4 +94,36 @@ export const PUBLISH_SCHEDULE = gql`
       published
     }
   }
+`;
+
+export const REQUEST_TIME_OFF = gql`
+  mutation RequestTimeOff($input: TimeOffInput!) {
+    requestTimeOff(input: $input) {
+      id
+      employeeId
+      startDate
+      endDate
+      status
+      requestDate
+    }
+  }
+`;
+
+export const UPDATE_TIME_OFF_STATUS = gql`
+  mutation UpdateTimeOffStatus($id: UUID!, $status: TimeOffStatusGQL!) {
+    updateTimeOffStatus(id: $id, status: $status) {
+      id
+      employeeId
+      startDate
+      endDate
+      status
+      requestDate
+    }
+  }
+`;
+
+export const DELETE_TIME_OFF = gql`
+  mutation DeleteTimeOff($id: UUID!) {
+    deleteTimeOff(id: $id)
+  }
 `; 

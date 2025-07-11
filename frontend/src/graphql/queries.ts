@@ -10,6 +10,14 @@ export const GET_EMPLOYEES = gql`
       maxHoursPerDay
       availability
       preferredShifts
+      timeOffRequests {
+        id
+        employeeId
+        startDate
+        endDate
+        status
+        requestDate
+      }
     }
   }
 `;
@@ -30,7 +38,24 @@ export const GET_LOCATIONS = gql`
 
 export const GET_SCHEDULES = gql`
   query GetSchedules {
-    previewSchedules(weekStart: "2025-07-14", scheduleType: "echolab") {
+    employees {
+      id
+      name
+      role
+      timeOffRequests {
+        id
+        employeeId
+        startDate
+        endDate
+        status
+        requestDate
+      }
+    }
+    locations {
+      id
+      name
+    }
+    publishedSchedules(weekStart: "2025-01-01") {
       id
       employeeId
       locationId
@@ -38,6 +63,36 @@ export const GET_SCHEDULES = gql`
       startTime
       endTime
       published
+    }
+  }
+`;
+
+export const GET_TIME_OFF_REQUESTS = gql`
+  query GetTimeOffRequests {
+    timeOffRequests {
+      id
+      employeeId
+      startDate
+      endDate
+      status
+      requestDate
+      employee {
+        id
+        name
+      }
+    }
+  }
+`;
+
+export const GET_EMPLOYEE_TIME_OFF = gql`
+  query GetEmployeeTimeOff($employeeId: UUID!) {
+    employeeTimeOff(employeeId: $employeeId) {
+      id
+      employeeId
+      startDate
+      endDate
+      status
+      requestDate
     }
   }
 `; 

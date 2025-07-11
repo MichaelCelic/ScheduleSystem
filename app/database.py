@@ -5,7 +5,7 @@ engine = create_engine(DATABASE_URL, echo=True)
 
 def init_db():
     # Import all models to ensure they're registered with SQLModel
-    from .models import Employee, Location, Shift, EmployeeAvailabilityLink
+    from .models import Employee, Location, Shift, EmployeeAvailabilityLink, TimeOff
     SQLModel.metadata.create_all(engine)
 
 def get_session():

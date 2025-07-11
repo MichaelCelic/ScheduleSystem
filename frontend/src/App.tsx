@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard';
 import Employees from './pages/Employees';
 import Locations from './pages/Locations';
 import Schedules from './pages/Schedules';
+import TimeOff from './pages/TimeOff';
 import { ApolloWrapper } from './components/layout/SchedulerContext';
 
 // Create theme
@@ -60,6 +61,7 @@ const App: React.FC = () => {
               <Route path="/employees" element={<Employees />} />
               <Route path="/locations" element={<Locations />} />
               <Route path="/schedules" element={<Schedules />} />
+              <Route path="/time-off" element={<TimeOff />} />
             </Routes>
           </Layout>
         </Router>

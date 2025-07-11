@@ -1,8 +1,42 @@
 from datetime import date, timedelta, time
 from typing import List, Optional
-from .models import Employee, Location, Shift, DayOfWeek
+from .models import Employee, Location, Shift, DayOfWeek, TimeOff, TimeOffStatus
 import uuid
 import random
+
+def filter_employees_with_time_off(
+    employees: List[Employee],
+    start_date: date,
+    end_date: date
+) -> List[Employee]:
+    """
+    Filter out employees who have approved time off requests that overlap with the given date range.
+    
+    Args:
+        employees: List of employees to filter
+        start_date: Start date of the schedule period
+        end_date: End date of the schedule period
+    
+    Returns:
+        List of employees available during the specified period
+    """
+    available_employees = []
+    
+    for employee in employees:
+        # Check if employee has any approved time off that overlaps with the schedule period
+        has_time_off = False
+        
+        for time_off in employee.time_off_requests:
+            if (time_off.status == TimeOffStatus.APPROVED and 
+                time_off.start_date <= end_date and 
+                time_off.end_date >= start_date):
+                has_time_off = True
+                break
+        
+        if not has_time_off:
+            available_employees.append(employee)
+    
+    return available_employees
 
 def generate_weekly_schedule(
     week_start: date,
@@ -21,10 +55,16 @@ def generate_weekly_schedule(
         schedule_type: "echolab" or "oncall"
         published_oncall_shifts: Published on-call shifts for dependency rules
     """
+    # Calculate week end date
+    week_end = week_start + timedelta(days=6)
+    
+    # Filter out employees with approved time off for this week
+    available_employees = filter_employees_with_time_off(employees, week_start, week_end)
+    
     if schedule_type == "echolab":
-        return generate_echo_lab_schedule(week_start, employees, locations, published_oncall_shifts or [])
+        return generate_echo_lab_schedule(week_start, available_employees, locations, published_oncall_shifts or [])
     else:
-        return generate_oncall_schedule(week_start, employees, locations)
+        return generate_oncall_schedule(week_start, available_employees, locations)
 
 def generate_echo_lab_schedule(
     week_start: date,

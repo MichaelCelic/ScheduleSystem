@@ -18,6 +18,7 @@ import {
   People as PeopleIcon,
   LocationOn as LocationIcon,
   Schedule as ScheduleIcon,
+  EventNote as TimeOffIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -41,6 +42,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     { text: 'Employees', icon: <PeopleIcon />, path: '/employees' },
     { text: 'Locations', icon: <LocationIcon />, path: '/locations' },
     { text: 'Schedules', icon: <ScheduleIcon />, path: '/schedules' },
+    { text: 'Time Off', icon: <TimeOffIcon />, path: '/time-off' },
   ];
 
   const drawer = (

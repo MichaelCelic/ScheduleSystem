@@ -3,6 +3,7 @@ from datetime import date
 from .database import get_session
 from .models import Employee, Location
 from .scheduler import generate_weekly_schedule
+from .seed_data import seed_database
 
 app = typer.Typer()
 
@@ -42,6 +43,12 @@ def regenerate_schedule(week_start: str):
             session.add(s)
         session.commit()
         typer.echo(f"Regenerated schedule for week starting {week_start}")
+
+@app.command()
+def reseed():
+    """Reseed the database with the correct employee and location data."""
+    seed_database()
+    typer.echo("Database reseeded successfully!")
 
 if __name__ == "__main__":
     app() 

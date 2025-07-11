@@ -3,8 +3,8 @@ from typing import List, Optional
 from datetime import date
 import uuid
 from sqlmodel import select, delete
-from .models import Employee, Location, Shift, EmployeeAvailabilityLink, EmployeeRole
-from .graphql_types import EmployeeType, LocationType, ShiftType, AddEmployeeInput, AddLocationInput, DayOfWeekGQL, EmployeeRoleGQL
+from .models import Employee, Location, Shift, EmployeeAvailabilityLink, EmployeeRole, TimeOff, TimeOffStatus
+from .graphql_types import EmployeeType, LocationType, ShiftType, AddEmployeeInput, AddLocationInput, DayOfWeekGQL, EmployeeRoleGQL, TimeOffType, TimeOffInput, TimeOffStatusGQL
 from .database import get_session
 from .scheduler import generate_weekly_schedule, can_generate_echo_lab_schedule, check_oncall_schedule_published
 from .models import DayOfWeek
@@ -22,7 +22,25 @@ class Query:
                 role=EmployeeRoleGQL(e.role.value),
                 availability=[DayOfWeekGQL(day.value) for day in e.availability], 
                 max_hours_per_day=e.max_hours_per_day,
-                preferred_shifts=e.preferred_shifts
+                preferred_shifts=e.preferred_shifts,
+                time_off_requests=[TimeOffType(
+                    id=to.id,
+                    employee_id=to.employee_id,
+                    start_date=to.start_date,
+                    end_date=to.end_date,
+                    status=TimeOffStatusGQL(to.status.value),
+                    request_date=to.request_date,
+                    employee=EmployeeType(
+                        id=e.id,
+                        name=e.name,
+                        age=e.age,
+                        role=EmployeeRoleGQL(e.role.value),
+                        availability=[DayOfWeekGQL(day.value) for day in e.availability],
+                        max_hours_per_day=e.max_hours_per_day,
+                        preferred_shifts=e.preferred_shifts,
+                        time_off_requests=[]
+                    )
+                ) for to in e.time_off_requests]
             ) for e in employees]
 
     @strawberry.field
@@ -85,6 +103,67 @@ class Query:
             published_shifts = session.exec(select(Shift).where(Shift.published == True)).all()
             return can_generate_echo_lab_schedule(weekStart, published_shifts)
 
+    @strawberry.field
+    def timeOffRequests(self) -> List[TimeOffType]:
+        """Get all time off requests"""
+        with get_session() as session:
+            # Use select with join to load employee data
+            from sqlmodel import select
+            time_off_requests = session.exec(
+                select(TimeOff, Employee)
+                .join(Employee, TimeOff.employee_id == Employee.id)
+            ).all()
+            
+            return [TimeOffType(
+                id=to.id,
+                employee_id=to.employee_id,
+                start_date=to.start_date,
+                end_date=to.end_date,
+                status=TimeOffStatusGQL(to.status.value),
+                request_date=to.request_date,
+                employee=EmployeeType(
+                    id=emp.id,
+                    name=emp.name,
+                    age=emp.age,
+                    role=EmployeeRoleGQL(emp.role.value),
+                    availability=[],
+                    max_hours_per_day=emp.max_hours_per_day,
+                    preferred_shifts=[],
+                    time_off_requests=[]
+                ) if emp else None
+            ) for to, emp in time_off_requests]
+
+    @strawberry.field
+    def employeeTimeOff(self, employee_id: uuid.UUID) -> List[TimeOffType]:
+        """Get time off requests for a specific employee"""
+        with get_session() as session:
+            # Get employee and time off requests
+            employee = session.get(Employee, employee_id)
+            if not employee:
+                raise Exception("Employee not found")
+                
+            time_off_requests = session.exec(
+                select(TimeOff).where(TimeOff.employee_id == employee_id)
+            ).all()
+            return [TimeOffType(
+                id=to.id,
+                employee_id=to.employee_id,
+                start_date=to.start_date,
+                end_date=to.end_date,
+                status=TimeOffStatusGQL(to.status.value),
+                request_date=to.request_date,
+                employee=EmployeeType(
+                    id=employee.id,
+                    name=employee.name,
+                    age=employee.age,
+                    role=EmployeeRoleGQL(employee.role.value),
+                    availability=[],
+                    max_hours_per_day=employee.max_hours_per_day,
+                    preferred_shifts=[],
+                    time_off_requests=[]
+                )
+            ) for to in time_off_requests]
+
 @strawberry.type
 class Mutation:
     @strawberry.mutation
@@ -124,7 +203,8 @@ class Mutation:
                 role=EmployeeRoleGQL(employee.role.value),
                 availability=[DayOfWeekGQL(link.day.value) for link in availability_links], 
                 max_hours_per_day=employee.max_hours_per_day,
-                preferred_shifts=input.preferred_shifts
+                preferred_shifts=input.preferred_shifts,
+                time_off_requests=[]
             )
 
     @strawberry.mutation
@@ -166,7 +246,25 @@ class Mutation:
                 role=EmployeeRoleGQL(employee.role.value),
                 availability=[DayOfWeekGQL(link.day.value) for link in availability_links], 
                 max_hours_per_day=employee.max_hours_per_day,
-                preferred_shifts=input.preferred_shifts
+                preferred_shifts=input.preferred_shifts,
+                time_off_requests=[TimeOffType(
+                    id=to.id,
+                    employee_id=to.employee_id,
+                    start_date=to.start_date,
+                    end_date=to.end_date,
+                    status=TimeOffStatusGQL(to.status.value),
+                    request_date=to.request_date,
+                    employee=EmployeeType(
+                        id=employee.id,
+                        name=employee.name,
+                        age=employee.age,
+                        role=EmployeeRoleGQL(employee.role.value),
+                        availability=[],
+                        max_hours_per_day=employee.max_hours_per_day,
+                        preferred_shifts=[],
+                        time_off_requests=[]
+                    )
+                ) for to in employee.time_off_requests]
             )
 
     @strawberry.mutation
@@ -291,5 +389,98 @@ class Mutation:
                 id=s.id, employee_id=s.employee_id, location_id=s.location_id, date=s.date,
                 start_time=s.start_time, end_time=s.end_time, published=s.published
             ) for s in shifts]
+
+    @strawberry.mutation
+    def requestTimeOff(self, input: TimeOffInput) -> TimeOffType:
+        """Request time off for an employee"""
+        with get_session() as session:
+            # Validate that the employee exists
+            employee = session.get(Employee, input.employee_id)
+            if not employee:
+                raise Exception("Employee not found")
+            
+            # Validate date range
+            if input.start_date > input.end_date:
+                raise Exception("Start date must be before or equal to end date")
+            
+            # Create time off request
+            time_off = TimeOff(
+                employee_id=input.employee_id,
+                start_date=input.start_date,
+                end_date=input.end_date,
+                status=TimeOffStatus.PENDING
+            )
+            
+            session.add(time_off)
+            session.commit()
+            session.refresh(time_off)
+            
+            return TimeOffType(
+                id=time_off.id,
+                employee_id=time_off.employee_id,
+                start_date=time_off.start_date,
+                end_date=time_off.end_date,
+                status=TimeOffStatusGQL(time_off.status.value),
+                request_date=time_off.request_date,
+                employee=EmployeeType(
+                    id=employee.id,
+                    name=employee.name,
+                    age=employee.age,
+                    role=EmployeeRoleGQL(employee.role.value),
+                    availability=[],
+                    max_hours_per_day=employee.max_hours_per_day,
+                    preferred_shifts=[],
+                    time_off_requests=[]
+                )
+            )
+
+    @strawberry.mutation
+    def updateTimeOffStatus(self, id: uuid.UUID, status: TimeOffStatusGQL) -> TimeOffType:
+        """Update the status of a time off request (approve/deny)"""
+        with get_session() as session:
+            time_off = session.get(TimeOff, id)
+            if not time_off:
+                raise Exception("Time off request not found")
+            
+            # Get the employee for the time off request
+            employee = session.get(Employee, time_off.employee_id)
+            if not employee:
+                raise Exception("Employee not found")
+            
+            time_off.status = TimeOffStatus(status.value)
+            session.add(time_off)
+            session.commit()
+            session.refresh(time_off)
+            
+            return TimeOffType(
+                id=time_off.id,
+                employee_id=time_off.employee_id,
+                start_date=time_off.start_date,
+                end_date=time_off.end_date,
+                status=TimeOffStatusGQL(time_off.status.value),
+                request_date=time_off.request_date,
+                employee=EmployeeType(
+                    id=employee.id,
+                    name=employee.name,
+                    age=employee.age,
+                    role=EmployeeRoleGQL(employee.role.value),
+                    availability=[],
+                    max_hours_per_day=employee.max_hours_per_day,
+                    preferred_shifts=[],
+                    time_off_requests=[]
+                )
+            )
+
+    @strawberry.mutation
+    def deleteTimeOff(self, id: uuid.UUID) -> bool:
+        """Delete a time off request"""
+        with get_session() as session:
+            time_off = session.get(TimeOff, id)
+            if not time_off:
+                return False
+            
+            session.delete(time_off)
+            session.commit()
+            return True
 
 schema = strawberry.Schema(query=Query, mutation=Mutation) 

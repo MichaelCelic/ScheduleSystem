@@ -3,7 +3,7 @@ import uuid
 from datetime import date, time
 from typing import List, Optional
 from enum import Enum
-from .models import DayOfWeek, EmployeeRole
+from .models import DayOfWeek, EmployeeRole, TimeOffStatus
 
 @strawberry.enum
 class DayOfWeekGQL(Enum):
@@ -20,6 +20,12 @@ class EmployeeRoleGQL(Enum):
     STAFF = "staff"
     STUDENT = "student"
 
+@strawberry.enum
+class TimeOffStatusGQL(Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    DENIED = "denied"
+
 @strawberry.type
 class EmployeeType:
     id: uuid.UUID
@@ -29,6 +35,7 @@ class EmployeeType:
     availability: List[DayOfWeekGQL]
     max_hours_per_day: float
     preferred_shifts: List[str]
+    time_off_requests: List["TimeOffType"]
 
 @strawberry.type
 class LocationType:
@@ -49,6 +56,22 @@ class ShiftType:
     start_time: time
     end_time: time
     published: bool
+
+@strawberry.type
+class TimeOffType:
+    id: uuid.UUID
+    employee_id: uuid.UUID
+    start_date: date
+    end_date: date
+    status: TimeOffStatusGQL
+    request_date: date
+    employee: Optional[EmployeeType]
+
+@strawberry.input
+class TimeOffInput:
+    employee_id: uuid.UUID
+    start_date: date
+    end_date: date
 
 @strawberry.input
 class AddEmployeeInput:

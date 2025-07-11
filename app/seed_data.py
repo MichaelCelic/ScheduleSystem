@@ -18,9 +18,10 @@ def seed_database():
             # Tables might not exist yet, which is fine
             session.rollback()
         
-        # Create employees (data from SchedulerContext.tsx)
+        # Create employees with specific IDs
         employees_data = [
             {
+                "id": uuid.UUID("7b57a3aa-afa2-41ff-bcb4-768d9d2bcbf2"),
                 "name": "Martha",
                 "age": 35,
                 "role": EmployeeRole.STAFF,
@@ -31,6 +32,7 @@ def seed_database():
                 }
             },
             {
+                "id": uuid.UUID("ba1de010-5637-4855-a865-c7b44e9c578e"),
                 "name": "Grisel",
                 "age": 28,
                 "role": EmployeeRole.STAFF,
@@ -41,6 +43,7 @@ def seed_database():
                 }
             },
             {
+                "id": uuid.UUID("5a02f738-fe7d-4859-86a3-d89710484344"),
                 "name": "Emilio",
                 "age": 32,
                 "role": EmployeeRole.STAFF,
@@ -51,6 +54,7 @@ def seed_database():
                 }
             },
             {
+                "id": uuid.UUID("1ba91002-ea3a-4377-bc2a-9bab3d4de5b7"),
                 "name": "Annie",
                 "age": 29,
                 "role": EmployeeRole.STAFF,
@@ -61,6 +65,7 @@ def seed_database():
                 }
             },
             {
+                "id": uuid.UUID("9f1754d4-d387-4b71-923a-e731dfdd9a72"),
                 "name": "Angela",
                 "age": 31,
                 "role": EmployeeRole.STAFF,
@@ -71,6 +76,7 @@ def seed_database():
                 }
             },
             {
+                "id": uuid.UUID("685265d0-5ed5-46a8-8db7-6c637f847e5a"),
                 "name": "Alexandra",
                 "age": 27,
                 "role": EmployeeRole.STAFF,
@@ -81,6 +87,7 @@ def seed_database():
                 }
             },
             {
+                "id": uuid.UUID("26115c86-90d8-4759-8e7d-ef21183b1e60"),
                 "name": "Shannon",
                 "age": 33,
                 "role": EmployeeRole.STAFF,
@@ -91,6 +98,7 @@ def seed_database():
                 }
             },
             {
+                "id": uuid.UUID("2d5bc4ac-f250-46dc-a0dd-3747c9b217a8"),
                 "name": "Guadalupe",
                 "age": 30,
                 "role": EmployeeRole.STAFF,
@@ -101,6 +109,7 @@ def seed_database():
                 }
             },
             {
+                "id": uuid.UUID("8c38d6f4-199d-4a9a-aaf6-0de5a7d27ff2"),
                 "name": "William",
                 "age": 24,
                 "role": EmployeeRole.STUDENT,
@@ -126,7 +135,7 @@ def seed_database():
         # Create employees
         for emp_data in employees_data:
             employee = Employee(
-                id=uuid.uuid4(),
+                id=emp_data["id"],
                 name=emp_data["name"],
                 age=emp_data["age"],
                 role=emp_data["role"],

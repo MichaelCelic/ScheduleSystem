@@ -17,6 +17,20 @@ class EmployeeRole(enum.Enum):
     STAFF = "staff"
     STUDENT = "student"
 
+class TimeOffStatus(enum.Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    DENIED = "denied"
+
+class TimeOff(SQLModel, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
+    employee_id: uuid.UUID = Field(foreign_key="employee.id")
+    start_date: date
+    end_date: date
+    status: TimeOffStatus = Field(default=TimeOffStatus.PENDING)
+    request_date: date = Field(default_factory=date.today)
+    employee: Optional["Employee"] = Relationship(back_populates="time_off_requests")
+
 class EmployeeAvailabilityLink(SQLModel, table=True):
     employee_id: uuid.UUID = Field(foreign_key="employee.id", primary_key=True)
     day: DayOfWeek = Field(primary_key=True)
@@ -31,6 +45,7 @@ class Employee(SQLModel, table=True):
     role: EmployeeRole = Field(default=EmployeeRole.STAFF)
     shifts: list["Shift"] = Relationship(back_populates="employee")
     availability_links: list["EmployeeAvailabilityLink"] = Relationship(back_populates="employee")
+    time_off_requests: list["TimeOff"] = Relationship(back_populates="employee")
 
     @property
     def availability(self) -> List[DayOfWeek]:

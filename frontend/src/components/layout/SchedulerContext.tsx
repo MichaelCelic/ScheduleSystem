@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState } from 'react';
 import { useQuery, useMutation, ApolloClient, InMemoryCache, ApolloProvider } from '@apollo/client';
 import { GET_EMPLOYEES, GET_LOCATIONS, GET_SCHEDULES } from '../../graphql/queries';
-import { ADD_EMPLOYEE, UPDATE_EMPLOYEE, DELETE_EMPLOYEE, ADD_LOCATION, UPDATE_LOCATION, DELETE_LOCATION, GENERATE_SCHEDULE, PUBLISH_SCHEDULE } from '../../graphql/mutations';
+import { ADD_EMPLOYEE, UPDATE_EMPLOYEE, DELETE_EMPLOYEE, ADD_LOCATION, UPDATE_LOCATION, DELETE_LOCATION, GENERATE_SCHEDULE, PUBLISH_SCHEDULE, REQUEST_TIME_OFF, UPDATE_TIME_OFF_STATUS, DELETE_TIME_OFF } from '../../graphql/mutations';
 
 // Create Apollo Client
 const client = new ApolloClient({
@@ -19,6 +19,14 @@ export interface Employee {
     maxHoursPerDay: number;
     preferredShifts: string[];
   };
+  timeOffRequests: {
+    id: string;
+    employeeId: string;
+    startDate: string;
+    endDate: string;
+    status: 'pending' | 'approved' | 'denied';
+    requestDate: string;
+  }[];
 }
 
 // Location type
@@ -72,6 +80,9 @@ interface SchedulerContextType {
   deleteLocation: any;
   generateSchedule: any;
   publishSchedule: any;
+  requestTimeOff: any;
+  updateTimeOffStatus: any;
+  deleteTimeOff: any;
 }
 
 const SchedulerContext = createContext<SchedulerContextType | undefined>(undefined);
@@ -111,6 +122,10 @@ export const SchedulerProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     onCompleted: () => refetchSchedules(),
   });
 
+  const [requestTimeOff] = useMutation(REQUEST_TIME_OFF);
+  const [updateTimeOffStatus] = useMutation(UPDATE_TIME_OFF_STATUS);
+  const [deleteTimeOff] = useMutation(DELETE_TIME_OFF);
+
   // Transform backend data to frontend format
   const transformEmployees = (backendEmployees: any[]): Employee[] => {
     if (!backendEmployees) return [];
@@ -136,6 +151,14 @@ export const SchedulerProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         maxHoursPerDay: emp.maxHoursPerDay || 8,
         preferredShifts: emp.preferredShifts || [],
       },
+      timeOffRequests: emp.timeOffRequests?.map((to: any) => ({
+        id: to.id,
+        employeeId: to.employeeId,
+        startDate: to.startDate,
+        endDate: to.endDate,
+        status: to.status.toLowerCase() as 'pending' | 'approved' | 'denied',
+        requestDate: to.requestDate,
+      })) || [],
     }));
   };
 
@@ -207,6 +230,9 @@ export const SchedulerProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       deleteLocation,
       generateSchedule,
       publishSchedule,
+      requestTimeOff,
+      updateTimeOffStatus,
+      deleteTimeOff,
     }}>
       {children}
     </SchedulerContext.Provider>
