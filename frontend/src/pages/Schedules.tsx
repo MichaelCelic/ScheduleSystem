@@ -37,7 +37,7 @@ import {
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
-import { addWeeks, format, startOfWeek } from 'date-fns';
+import { addWeeks, format, startOfWeek, isWithinInterval, parseISO } from 'date-fns';
 import { ScheduleGenerator } from '../utils/scheduleGenerator';
 import { useSchedulerContext } from '../components/layout/SchedulerContext';
 
@@ -59,6 +59,7 @@ interface Schedule {
 interface OnCallAssignments {
   JDCH: { [day: string]: string };
   WM: { [day: string]: string };
+  'On Call Fetal': { [day: string]: string };
 }
 
 const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -85,9 +86,52 @@ const Schedules: React.FC = () => {
   // Get JDCH location from live data
   const jdchLocation = locations.find(loc => loc.name === 'JDCH');
 
-  const ON_CALL_LOCATIONS = ['JDCH', 'W/M'];
+  const ON_CALL_LOCATIONS = ['JDCH', 'WM', 'On Call Fetal'];
 
   const ON_CALL_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+  // Helper function to generate date labels for days of the week
+  const getDateLabelsForWeek = (weekStart: Date): { [day: string]: string } => {
+    const labels: { [day: string]: string } = {};
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+    
+    // Calculate the Monday of the selected week
+    const monday = startOfWeek(weekStart, { weekStartsOn: 1 }); // 1 = Monday
+    
+    days.forEach((day, index) => {
+      const date = new Date(monday);
+      date.setDate(date.getDate() + index);
+      labels[day] = `${day} (${format(date, 'M/d')})`;
+    });
+    
+    return labels;
+  };
+
+  // Helper function to check if an employee has approved time-off for a specific date
+  const hasApprovedTimeOff = (employee: any, targetDate: Date): boolean => {
+    if (!employee.timeOffRequests || employee.timeOffRequests.length === 0) {
+      return false;
+    }
+
+    return employee.timeOffRequests.some((timeOff: any) => {
+      // Only check approved time-off requests
+      if (timeOff.status !== 'approved') {
+        return false;
+      }
+
+      const startDate = parseISO(timeOff.startDate);
+      const endDate = parseISO(timeOff.endDate);
+      
+      // Check if the target date falls within the time-off period
+      return isWithinInterval(targetDate, { start: startDate, end: endDate });
+    });
+  };
+
+  // Helper function to get the day of week for a specific date
+  const getDayOfWeek = (date: Date): string => {
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    return days[date.getDay()];
+  };
 
   // Check if on-call schedule exists for the selected week
   const isOnCallSchedulePublished = (weekStart: Date): boolean => {
@@ -177,7 +221,7 @@ const Schedules: React.FC = () => {
         const allDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
         
         // Business rules for assignments
-        const assignmentOptions = ['Inpatients', 'Cath/Inpat.', 'OR/Inpat.', 'Sedat./Inpat.', 'MWH/MHM', 'THC', 'TX-Inpat.', 'PTO', 'N/A'];
+        const assignmentOptions = ['Inpatients', 'Cath/Inpat.', 'OR/Inpat.', 'Sedat./Inpat.', 'MWH/MHM', 'THC', 'TX-Inpat.', 'MPG-Fetal', 'PTO', 'N/A'];
         
         // Get all staff employees (exclude students for Echo Lab)
         const staffEmployees = employees.filter(emp => emp.role === 'staff');
@@ -192,15 +236,24 @@ const Schedules: React.FC = () => {
           
           staffEmployees.forEach(employee => {
             assignments[employee.name] = {};
-            allDays.forEach(day => {
+            allDays.forEach((day, dayIndex) => {
+              // Calculate the actual date for this day of the week
+              const dayDate = new Date(formData.weekStart!);
+              dayDate.setDate(dayDate.getDate() + dayIndex);
+              
+              // Check if employee has approved time-off for this specific date
+              const hasTimeOff = hasApprovedTimeOff(employee, dayDate);
+              
               // Apply business rules
               let assignment = '';
               
-              // Rule 1: Martha only works M, T, TH, F (no Wednesday)
-              if (employee.name === 'Martha') {
-                if (day === 'Wednesday') {
-                  assignment = 'PTO';
-                } else if (day === 'Tuesday' || day === 'Friday') {
+              // If employee has approved time-off for this date, assign PTO
+              if (hasTimeOff) {
+                assignment = 'PTO';
+              }
+              // Rule 1: Martha's assignments (respecting time-off)
+              else if (employee.name === 'Martha') {
+                if (day === 'Tuesday' || day === 'Friday') {
                   // Rule 2: Tx-IP on Tuesday and Friday only staffed by Martha
                   assignment = 'TX-Inpat.';
                 } else {
@@ -218,15 +271,9 @@ const Schedules: React.FC = () => {
                 assignment = assignmentOptions.filter(opt => opt !== 'THC')[Math.floor(Math.random() * (assignmentOptions.length - 1))];
               }
               else {
-                // Random assignment for other employees/days
-                // Reduce PTO probability to make schedules more realistic
-                const random = Math.random();
-                if (random < 0.1) { // 10% chance of PTO
-                  assignment = 'PTO';
-                } else {
-                  const workOptions = assignmentOptions.filter(opt => opt !== 'PTO');
-                  assignment = workOptions[Math.floor(Math.random() * workOptions.length)];
-                }
+                // Random assignment for other employees/days (no random PTO)
+                const workOptions = assignmentOptions.filter(opt => opt !== 'PTO');
+                assignment = workOptions[Math.floor(Math.random() * workOptions.length)];
               }
               
               assignments[employee.name][day] = assignment;
@@ -547,9 +594,12 @@ const Schedules: React.FC = () => {
                                 <TableHead>
                                   <TableRow>
                                     <TableCell>Employee</TableCell>
-                                    {ECHO_LAB_DAYS.map((day) => (
-                                      <TableCell key={day}>{day}</TableCell>
-                                    ))}
+                                    {ECHO_LAB_DAYS.map((day) => {
+                                      const dateLabels = getDateLabelsForWeek(schedule.weekStart);
+                                      return (
+                                        <TableCell key={day}>{dateLabels[day] || day}</TableCell>
+                                      );
+                                    })}
                                   </TableRow>
                                 </TableHead>
                                 <TableBody>
@@ -574,6 +624,7 @@ const Schedules: React.FC = () => {
                                               <MenuItem value="MWH/MHM">MWH/MHM</MenuItem>
                                               <MenuItem value="THC">THC</MenuItem>
                                               <MenuItem value="TX-Inpat.">TX-Inpat.</MenuItem>
+                                              <MenuItem value="MPG-Fetal">MPG-Fetal</MenuItem>
                                               <MenuItem value="PTO">PTO</MenuItem>
                                               <MenuItem value="N/A">N/A</MenuItem>
                                             </Select>
@@ -637,9 +688,9 @@ const Schedules: React.FC = () => {
                           </TableRow>
                         </TableHead>
                         <TableBody>
-                          {['JDCH', 'WM'].map((loc) => (
+                          {ON_CALL_LOCATIONS.map((loc) => (
                             <TableRow key={loc}>
-                              <TableCell>On Call {loc === 'WM' ? 'W/M' : loc}</TableCell>
+                              <TableCell>On Call {loc === 'WM' ? 'W/M' : loc === 'On Call Fetal' ? 'Fetal' : loc}</TableCell>
                               {ON_CALL_DAYS.map((day) => (
                                 <TableCell key={day}>
                                   <FormControl size="small" fullWidth>
@@ -745,9 +796,9 @@ const Schedules: React.FC = () => {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {['JDCH', 'WM'].map((loc) => (
+                    {ON_CALL_LOCATIONS.map((loc) => (
                       <TableRow key={loc}>
-                        <TableCell>On Call {loc === 'WM' ? 'W/M' : loc}</TableCell>
+                        <TableCell>On Call {loc === 'WM' ? 'W/M' : loc === 'On Call Fetal' ? 'Fetal' : loc}</TableCell>
                         {ON_CALL_DAYS.map((day) => (
                           <TableCell key={day}>
                             <FormControl size="small" fullWidth>
@@ -810,9 +861,12 @@ const Schedules: React.FC = () => {
                             <TableHead>
                               <TableRow>
                                 <TableCell>Employee</TableCell>
-                                {ECHO_LAB_DAYS.map((day) => (
-                                  <TableCell key={day}>{day}</TableCell>
-                                ))}
+                                {ECHO_LAB_DAYS.map((day) => {
+                                  const dateLabels = getDateLabelsForWeek(schedule.weekStart);
+                                  return (
+                                    <TableCell key={day}>{dateLabels[day] || day}</TableCell>
+                                  );
+                                })}
                               </TableRow>
                             </TableHead>
                             <TableBody>
@@ -837,6 +891,7 @@ const Schedules: React.FC = () => {
                                           <MenuItem value="MWH/MHM">MWH/MHM</MenuItem>
                                           <MenuItem value="THC">THC</MenuItem>
                                           <MenuItem value="TX-Inpat.">TX-Inpat.</MenuItem>
+                                          <MenuItem value="MPG-Fetal">MPG-Fetal</MenuItem>
                                           <MenuItem value="PTO">PTO</MenuItem>
                                           <MenuItem value="N/A">N/A</MenuItem>
                                         </Select>

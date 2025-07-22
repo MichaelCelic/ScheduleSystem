@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState } from 'react';
 import { useQuery, useMutation, ApolloClient, InMemoryCache, ApolloProvider } from '@apollo/client';
 import { GET_EMPLOYEES, GET_LOCATIONS, GET_SCHEDULES } from '../../graphql/queries';
-import { ADD_EMPLOYEE, UPDATE_EMPLOYEE, DELETE_EMPLOYEE, ADD_LOCATION, UPDATE_LOCATION, DELETE_LOCATION, GENERATE_SCHEDULE, PUBLISH_SCHEDULE, REQUEST_TIME_OFF, UPDATE_TIME_OFF_STATUS, DELETE_TIME_OFF } from '../../graphql/mutations';
+import { ADD_EMPLOYEE, UPDATE_EMPLOYEE, DELETE_EMPLOYEE, ADD_LOCATION, UPDATE_LOCATION, DELETE_LOCATION, GENERATE_SCHEDULE, PUBLISH_SCHEDULE, REQUEST_TIME_OFF, UPDATE_TIME_OFF_STATUS, UPDATE_TIME_OFF, DELETE_TIME_OFF } from '../../graphql/mutations';
 
 // Create Apollo Client
 const client = new ApolloClient({
@@ -82,6 +82,7 @@ interface SchedulerContextType {
   publishSchedule: any;
   requestTimeOff: any;
   updateTimeOffStatus: any;
+  updateTimeOff: any;
   deleteTimeOff: any;
 }
 
@@ -124,6 +125,7 @@ export const SchedulerProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const [requestTimeOff] = useMutation(REQUEST_TIME_OFF);
   const [updateTimeOffStatus] = useMutation(UPDATE_TIME_OFF_STATUS);
+  const [updateTimeOff] = useMutation(UPDATE_TIME_OFF);
   const [deleteTimeOff] = useMutation(DELETE_TIME_OFF);
 
   // Transform backend data to frontend format
@@ -232,6 +234,7 @@ export const SchedulerProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       publishSchedule,
       requestTimeOff,
       updateTimeOffStatus,
+      updateTimeOff,
       deleteTimeOff,
     }}>
       {children}

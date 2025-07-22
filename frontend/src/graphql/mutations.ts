@@ -122,6 +122,19 @@ export const UPDATE_TIME_OFF_STATUS = gql`
   }
 `;
 
+export const UPDATE_TIME_OFF = gql`
+  mutation UpdateTimeOff($id: UUID!, $input: TimeOffInput!, $status: TimeOffStatusGQL) {
+    updateTimeOff(id: $id, input: $input, status: $status) {
+      id
+      employeeId
+      startDate
+      endDate
+      status
+      requestDate
+    }
+  }
+`;
+
 export const DELETE_TIME_OFF = gql`
   mutation DeleteTimeOff($id: UUID!) {
     deleteTimeOff(id: $id)

@@ -38,7 +38,7 @@ interface TimeOffRequest {
 }
 
 const TimeOff: React.FC = () => {
-  const { employees, loading, error, requestTimeOff, deleteTimeOff } = useSchedulerContext();
+  const { employees, loading, error, requestTimeOff, updateTimeOff, deleteTimeOff } = useSchedulerContext();
   
   // Query for time off requests
   const { data: timeOffData, loading: timeOffLoading, error: timeOffError, refetch: refetchTimeOff } = useQuery(GET_TIME_OFF_REQUESTS);
@@ -446,8 +446,17 @@ const TimeOff: React.FC = () => {
               setSubmitError(null);
               
               try {
-                // Here you would call the updateTimeOffStatus mutation
-                // For now, we'll just close the dialog
+                await updateTimeOff({
+                  variables: {
+                    id: editingRequest.id,
+                    input: {
+                      employeeId: editingRequest.employeeId,
+                      startDate: editingRequest.startDate,
+                      endDate: editingRequest.endDate,
+                    },
+                    status: editingRequest.status.toUpperCase(),
+                  },
+                });
                 setEditDialogOpen(false);
                 refetchTimeOff();
               } catch (error) {

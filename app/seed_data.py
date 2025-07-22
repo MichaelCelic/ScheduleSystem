@@ -2,13 +2,14 @@ import uuid
 from datetime import date
 from sqlmodel import select, delete
 from .database import get_session
-from .models import Employee, Location, EmployeeAvailabilityLink, EmployeeRole, DayOfWeek, Shift
+from .models import Employee, Location, EmployeeAvailabilityLink, EmployeeRole, DayOfWeek, Shift, TimeOff, TimeOffStatus
 
 def seed_database():
     """Seed the database with employee and location data from frontend"""
     with get_session() as session:
         # Clear existing data (ignore errors if tables don't exist)
         try:
+            session.exec(delete(TimeOff))
             session.exec(delete(EmployeeAvailabilityLink))
             session.exec(delete(Shift))
             session.exec(delete(Employee))
@@ -157,6 +158,8 @@ def seed_database():
             
             session.commit()
         
+
+        
         # Create locations (data from SchedulerContext.tsx)
         locations_data = [
             {
@@ -174,6 +177,14 @@ def seed_database():
                 "required_staff_afternoon": 2,
                 "required_staff_night": 1,
                 "notes": ""
+            },
+            {
+                "name": "On Call Fetal",
+                "address": "789 Fetal Care Dr",
+                "required_staff_morning": 1,
+                "required_staff_afternoon": 1,
+                "required_staff_night": 1,
+                "notes": "Fetal care on-call coverage"
             }
         ]
         

@@ -3,6 +3,8 @@ from typing import List, Optional
 from .models import Employee, Location, Shift, DayOfWeek, TimeOff, TimeOffStatus
 import uuid
 import random
+import math
+from .logger import logger, log_business_rule, log_schedule_generation
 
 def filter_employees_with_time_off(
     employees: List[Employee],
@@ -46,75 +48,158 @@ def generate_weekly_schedule(
     published_oncall_shifts: List[Shift] = None
 ) -> List[Shift]:
     """
-    Generate weekly schedule based on schedule type and business rules.
-    
-    Args:
-        week_start: Start date of the week
-        employees: List of available employees
-        locations: List of available locations
-        schedule_type: "echolab" or "oncall"
-        published_oncall_shifts: Published on-call shifts for dependency rules
+    Generate a weekly schedule for the specified type
     """
-    # Calculate week end date
-    week_end = week_start + timedelta(days=6)
+    logger.info(f"Starting schedule generation for {schedule_type} week starting {week_start}")
     
-    # Filter out employees with approved time off for this week
-    available_employees = filter_employees_with_time_off(employees, week_start, week_end)
-    
-    if schedule_type == "echolab":
-        return generate_echo_lab_schedule(week_start, available_employees, locations, published_oncall_shifts or [])
-    else:
-        return generate_oncall_schedule(week_start, available_employees, locations)
+    try:
+        if schedule_type == "echolab":
+            shifts = generate_echo_lab_schedule(week_start, employees, locations, published_oncall_shifts)
+        elif schedule_type == "oncall":
+            shifts = generate_oncall_schedule(week_start, employees, locations)
+        else:
+            logger.error(f"Unknown schedule type: {schedule_type}")
+            raise ValueError(f"Unknown schedule type: {schedule_type}")
+        
+        log_schedule_generation(
+            schedule_type=schedule_type,
+            week_start=str(week_start),
+            employee_count=len(employees),
+            success=True
+        )
+        
+        logger.info(f"Successfully generated {len(shifts)} shifts for {schedule_type}")
+        return shifts
+        
+    except Exception as e:
+        log_schedule_generation(
+            schedule_type=schedule_type,
+            week_start=str(week_start),
+            employee_count=len(employees),
+            success=False,
+            error=str(e)
+        )
+        logger.error(f"Failed to generate {schedule_type} schedule: {e}")
+        raise
 
 def generate_echo_lab_schedule(
     week_start: date,
     employees: List[Employee],
     locations: List[Location],
-    published_oncall_shifts: List[Shift]
+    published_oncall_shifts: List[Shift] = None
 ) -> List[Shift]:
     """
-    Generate echo lab schedule with specific business rules:
-    1. THC is always staffed by Emilio. No THC clinic on Friday.
-    2. Tx-IP on Tuesday and Friday only staffed by Martha
-    3. Person on call at MHW/MHM also has that regular shift
-    4. Person on JDCH call is on OR/Inpat echo lab shift
-    5. Echo lab schedules only run Monday through Friday (M-F)
+    Generate Echo Lab schedule based on published on-call schedule
     """
-    shifts = []
+    logger.info(f"Generating Echo Lab schedule for week starting {week_start}")
     
-    # Find specific employees by name
-    emilio = find_employee_by_name(employees, "Emilio")
-    martha = find_employee_by_name(employees, "Martha")
-    
-    # Find specific locations
-    thc_location = find_location_by_name(locations, "THC")
-    txip_location = find_location_by_name(locations, "Tx-IP")
-    or_inpat_location = find_location_by_name(locations, "OR/Inpat")
-    mhw_location = find_location_by_name(locations, "MHW")
-    mhm_location = find_location_by_name(locations, "MHM")
-    
-    # Rule 1: Assign THC shifts to Emilio (Mon-Thu only)
-    if emilio and thc_location:
-        shifts.extend(assign_thc_shifts(week_start, emilio, thc_location))
-    
-    # Rule 2: Assign Tx-IP shifts to Martha (Tue, Fri only)
-    if martha and txip_location:
-        shifts.extend(assign_txip_shifts(week_start, martha, txip_location))
-    
-    # Rule 3 & 4: Assign on-call dependent shifts
-    if published_oncall_shifts:
-        shifts.extend(assign_oncall_dependent_shifts(
-            week_start, published_oncall_shifts, employees, 
-            or_inpat_location, mhw_location, mhm_location, locations
-        ))
-    
-    # Fill remaining shifts with available staff
-    remaining_shifts = fill_remaining_echo_lab_shifts(
-        week_start, employees, locations, shifts
-    )
-    shifts.extend(remaining_shifts)
-    
-    return shifts
+    try:
+        # Use JDCH as the default location for Echo Lab shifts
+        jdch_location = next((loc for loc in locations if loc.name == "JDCH"), None)
+        if not jdch_location:
+            logger.error("JDCH location not found")
+            raise ValueError("JDCH location not found")
+        
+        # Get staff employees (non-students)
+        staff_employees = [emp for emp in employees if emp.role.value == "staff"]
+        logger.info(f"Found {len(staff_employees)} staff employees for Echo Lab scheduling")
+        
+        shifts = []
+        all_days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+        assignment_options = ["TX-Inpat.", "TX-Outpat.", "Echo Lab", "MPG-Fetal", "PTO"]
+        
+        # Generate 5 weeks of schedules
+        for week_num in range(5):
+            week_date = week_start + timedelta(weeks=week_num)
+            logger.info(f"Generating schedule for week {week_num + 1} starting {week_date}")
+            
+            for day_index, day in enumerate(all_days):
+                current_date = week_date + timedelta(days=day_index)
+                
+                # Add date label for better visibility (e.g., "Monday (8/04)")
+                day_with_date = f"{day} ({current_date.strftime('%m/%d')})"
+                
+                logger.info(f"Processing {day_with_date} - Date: {current_date}")
+                
+                # Create assignments for all employees
+                assignments = {}
+                
+                for employee in staff_employees:
+                    assignments[employee.name] = {}
+                    
+                    # Check if employee has approved time-off for this date
+                    has_time_off = has_approved_time_off(employee, current_date)
+                    
+                    # Debug logging for time-off checks
+                    logger.debug(f"Time-off check for {employee.name} on {current_date}: {has_time_off}")
+                    
+                    # Apply business rules
+                    assignment = ""
+                    
+                    # Rule 1: Martha's assignments (respecting time-off)
+                    if employee.name == "Martha":
+                        if has_time_off:
+                            assignment = "PTO"
+                            logger.info(f"Martha has time-off on {current_date}, assigning PTO")
+                        elif day == "Tuesday" or day == "Friday":
+                            # Rule 2: Tx-IP on Tuesday and Friday only staffed by Martha
+                            assignment = "TX-Inpat."
+                        else:
+                            # Random assignment for other days (avoid PTO for Martha on work days)
+                            work_options = [opt for opt in assignment_options if opt != "PTO"]
+                            assignment = work_options[int(random.random() * len(work_options))]
+                    
+                    # Rule 3: Other employees - check time-off first
+                    else:
+                        if has_time_off:
+                            assignment = "PTO"
+                            logger.info(f"{employee.name} has time-off on {current_date}, assigning PTO")
+                        else:
+                            # Random assignment for other employees/days
+                            work_options = [opt for opt in assignment_options if opt != "PTO"]
+                            assignment = work_options[int(random.random() * len(work_options))]
+                    
+                    assignments[employee.name][day] = assignment
+                    
+                    # Log business rule application
+                    log_business_rule(
+                        rule_name="echo_lab_assignment",
+                        details={
+                            "employee": employee.name,
+                            "day": day,
+                            "date": str(current_date),
+                            "assignment": assignment,
+                            "has_time_off": has_time_off
+                        },
+                        success=True
+                    )
+                
+                # Create shift objects for this day
+                for employee_name, day_assignments in assignments.items():
+                    assignment = day_assignments[day]
+                    if assignment and assignment != "PTO":
+                        # Find the employee
+                        employee = next((emp for emp in staff_employees if emp.name == employee_name), None)
+                        if employee:
+                            shift = Shift(
+                                id=uuid.uuid4(),
+                                employee_id=employee.id,
+                                location_id=jdch_location.id,
+                                date=current_date,
+                                start_time=time(8, 0),  # 8:00 AM
+                                end_time=time(17, 0),   # 5:00 PM
+                                published=False
+                            )
+                            shifts.append(shift)
+                            
+                            logger.debug(f"Created shift for {employee_name} on {day} ({current_date}): {assignment}")
+        
+        logger.info(f"Generated {len(shifts)} Echo Lab shifts")
+        return shifts
+        
+    except Exception as e:
+        logger.error(f"Failed to generate Echo Lab schedule: {e}")
+        raise
 
 def generate_oncall_schedule(
     week_start: date,
@@ -122,36 +207,70 @@ def generate_oncall_schedule(
     locations: List[Location]
 ) -> List[Shift]:
     """
-    Generate on-call schedule (simplified version for now)
+    Generate on-call schedule for JDCH and W/M locations
     """
-    shifts = []
+    logger.info(f"Generating on-call schedule for week starting {week_start}")
     
-    # Find on-call locations
-    jdch_location = find_location_by_name(locations, "JDCH")
-    wm_location = find_location_by_name(locations, "W/M")
-    
-    # Generate one on-call shift per day for the week
-    for i in range(7):
-        current_date = week_start + timedelta(days=i)
-        day_of_week = DayOfWeek(current_date.strftime("%a").title())
+    try:
+        # Get on-call locations
+        oncall_locations = [loc for loc in locations if loc.name in ["JDCH", "W/M", "On Call Fetal"]]
+        if not oncall_locations:
+            logger.error("No on-call locations found")
+            raise ValueError("No on-call locations found")
         
-        # Find available employees for this day
-        available_employees = [
-            emp for emp in employees 
-            if day_of_week in emp.availability
-        ]
+        # Get staff employees
+        staff_employees = [emp for emp in employees if emp.role.value == "staff"]
+        logger.info(f"Found {len(staff_employees)} staff employees for on-call scheduling")
         
-        if available_employees:
-            # Randomly assign on-call shifts
-            if jdch_location:
-                employee = random.choice(available_employees)
-                shifts.append(create_shift(employee.id, jdch_location.id, current_date))
+        shifts = []
+        all_days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        
+        # Generate 5 weeks of schedules
+        for week_num in range(5):
+            week_date = week_start + timedelta(weeks=week_num)
+            logger.info(f"Generating on-call schedule for week {week_num + 1} starting {week_date}")
             
-            if wm_location:
-                employee = random.choice(available_employees)
-                shifts.append(create_shift(employee.id, wm_location.id, current_date))
-    
-    return shifts
+            for day_index, day in enumerate(all_days):
+                current_date = week_date + timedelta(days=day_index)
+                
+                # Assign employees to each location for this day
+                for location in oncall_locations:
+                    # Simple assignment logic - can be enhanced
+                    assigned_employee = staff_employees[day_index % len(staff_employees)]
+                    
+                    # Note: Employees with time-off can still be assigned on-call
+                    # (This is the business rule - on-call availability during time-off)
+                    
+                    shift = Shift(
+                        id=uuid.uuid4(),
+                        employee_id=assigned_employee.id,
+                        location_id=location.id,
+                        date=current_date,
+                        start_time=time(17, 0),  # 5:00 PM
+                        end_time=time(8, 0),     # 8:00 AM (next day)
+                        published=False
+                    )
+                    shifts.append(shift)
+                    
+                    log_business_rule(
+                        rule_name="oncall_assignment",
+                        details={
+                            "employee": assigned_employee.name,
+                            "location": location.name,
+                            "day": day,
+                            "date": str(current_date)
+                        },
+                        success=True
+                    )
+                    
+                    logger.debug(f"Created on-call shift for {assigned_employee.name} at {location.name} on {day} ({current_date})")
+        
+        logger.info(f"Generated {len(shifts)} on-call shifts")
+        return shifts
+        
+    except Exception as e:
+        logger.error(f"Failed to generate on-call schedule: {e}")
+        raise
 
 def assign_thc_shifts(week_start: date, emilio: Employee, thc_location: Location) -> List[Shift]:
     """Assign THC shifts to Emilio (Monday through Thursday only)"""
@@ -336,12 +455,112 @@ def check_oncall_schedule_published(
     # Simply check if there are any on-call shifts for this week
     return len(oncall_shifts) > 0
 
-def can_generate_echo_lab_schedule(
-    week_start: date,
-    published_shifts: List[Shift]
-) -> bool:
+def has_approved_time_off(employee: Employee, check_date: date) -> bool:
     """
-    Check if echo lab schedule can be generated for the given week.
-    Requires on-call schedule to be published first.
+    Check if an employee has approved time-off for a specific date
     """
-    return check_oncall_schedule_published(week_start, published_shifts) 
+    try:
+        for time_off in employee.time_off_requests:
+            if (time_off.status.value == "approved" and 
+                time_off.start_date <= check_date <= time_off.end_date):
+                logger.debug(f"Employee {employee.name} has approved time-off on {check_date}")
+                return True
+        return False
+    except Exception as e:
+        logger.error(f"Error checking time-off for employee {employee.name}: {e}")
+        return False
+
+def can_generate_echo_lab_schedule(week_start: date, published_shifts: List[Shift]) -> bool:
+    """
+    Check if echo lab schedule can be generated based on published on-call schedule
+    """
+    logger.info(f"Checking if echo lab schedule can be generated for week starting {week_start}")
+    
+    try:
+        # Check if we have published on-call shifts for the week
+        week_end = week_start + timedelta(days=6)
+        oncall_shifts = [
+            shift for shift in published_shifts
+            if shift.location.name in ["JDCH", "W/M"] and
+            week_start <= shift.date <= week_end
+        ]
+        
+        # We need at least one on-call shift per day for the week
+        required_days = 7
+        actual_days = len(set(shift.date for shift in oncall_shifts))
+        
+        can_generate = actual_days >= required_days
+        
+        log_business_rule(
+            rule_name="echo_lab_generation_check",
+            details={
+                "week_start": str(week_start),
+                "required_days": required_days,
+                "actual_days": actual_days,
+                "can_generate": can_generate
+            },
+            success=True
+        )
+        
+        logger.info(f"Echo lab generation check: {actual_days}/{required_days} days covered, can generate: {can_generate}")
+        return can_generate
+        
+    except Exception as e:
+        log_business_rule(
+            rule_name="echo_lab_generation_check",
+            details={
+                "week_start": str(week_start),
+                "error": str(e)
+            },
+            success=False
+        )
+        logger.error(f"Error checking echo lab generation capability: {e}")
+        return False
+
+def check_oncall_schedule_published(week_start: date, published_shifts: List[Shift]) -> bool:
+    """
+    Check if on-call schedule is published for the given week
+    """
+    logger.info(f"Checking if on-call schedule is published for week starting {week_start}")
+    
+    try:
+        week_end = week_start + timedelta(days=6)
+        oncall_shifts = [
+            shift for shift in published_shifts
+            if shift.location.name in ["JDCH", "W/M"] and
+            week_start <= shift.date <= week_end
+        ]
+        
+        # Check if we have shifts for all days of the week
+        week_days = set()
+        for i in range(7):
+            week_days.add(week_start + timedelta(days=i))
+        
+        covered_days = set(shift.date for shift in oncall_shifts)
+        is_published = week_days.issubset(covered_days)
+        
+        log_business_rule(
+            rule_name="oncall_schedule_published_check",
+            details={
+                "week_start": str(week_start),
+                "required_days": len(week_days),
+                "covered_days": len(covered_days),
+                "is_published": is_published
+            },
+            success=True
+        )
+        
+        logger.info(f"On-call schedule published check: {len(covered_days)}/{len(week_days)} days covered, published: {is_published}")
+        return is_published
+        
+    except Exception as e:
+        log_business_rule(
+            rule_name="oncall_schedule_published_check",
+            details={
+                "week_start": str(week_start),
+                "error": str(e)
+            },
+            success=False
+        )
+        logger.error(f"Error checking on-call schedule published status: {e}")
+        return False 
