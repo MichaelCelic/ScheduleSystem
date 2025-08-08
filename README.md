@@ -22,58 +22,222 @@ A comprehensive hospital staff scheduling system with a modern React frontend an
 ## 🚀 Quick Start
 
 ### Prerequisites
-- **Python 3.8+** with pip
-- **Node.js 16+** with npm
+- **Python 3.8-3.11** with pip
+- **Node.js 16.0+** with npm
 - **Git** (for cloning the repository)
+- **4GB RAM** (recommended for development)
+- **Modern web browser** (Chrome, Firefox, Safari, Edge)
 
-### Option 1: Manual Setup (Recommended for Development)
+## ⚡ Quick 5-Minute Setup
 
-#### 1. Backend Setup
 ```bash
-# Navigate to project directory
+# Clone and setup
+git clone <repository-url>
 cd HospitalScheduler
 
-# Create and activate virtual environment
+# Backend (Terminal 1)
 python -m venv .venv
-.venv/Scripts/activate  # On Windows
-source .venv/bin/activate  # On macOS/Linux
-
-# Install Python dependencies
+.venv\Scripts\activate  # Windows
 pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
 
-# Start the FastAPI backend
+# Frontend (Terminal 2)
+cd frontend
+npm install
+npm start
+```
+
+Visit http://localhost:3000 to start scheduling! 🚀
+
+## 🚨 IMPORTANT: Launch Backend and Frontend Individually
+
+**⚠️ CRITICAL: You MUST start the backend and frontend in separate terminal windows to avoid PowerShell syntax errors.**
+
+### Step 1: Start Backend (Terminal 1)
+```powershell
+# Navigate to project directory
+cd C:\Users\epicg\PycharmProjects\HospitalScheduler
+
+# Activate virtual environment
+& c:/Users/epicg/PycharmProjects/HospitalScheduler/.venv/Scripts/Activate.ps1
+
+# Start FastAPI backend
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-The backend will be available at:
+**Backend will be available at:**
 - **API**: http://localhost:8000
 - **GraphQL Playground**: http://localhost:8000/graphql
 - **API Documentation**: http://localhost:8000/docs
 
-#### 2. Frontend Setup
-```bash
-# Open a new terminal window
-cd frontend
+### Step 2: Start Frontend (Terminal 2)
+```powershell
+# Open a NEW terminal window
+# Navigate to frontend directory
+cd C:\Users\epicg\PycharmProjects\HospitalScheduler\frontend
 
-# Install Node.js dependencies
-npm install
-
-# Start the React development server
+# Start React development server
 npm start
 ```
 
-The frontend will be available at:
+**Frontend will be available at:**
 - **Web Application**: http://localhost:3000
 
-### Option 2: Docker Setup (Recommended for Production)
+### ❌ What NOT to do:
+```powershell
+# DON'T use bash syntax in PowerShell - this will cause errors:
+cd /c/Users/epicg/PycharmProjects/HospitalScheduler && .venv/Scripts/activate && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
-```bash
-# Build and start all services
-docker-compose up --build
-
-# Or run in detached mode
-docker-compose up -d --build
+# DON'T try to start both services in one command:
+npm start && uvicorn app.main:app --reload
 ```
+
+### ✅ What TO do:
+- Use separate terminal windows for each service
+- Use PowerShell syntax (not bash syntax)
+- Start backend first, then frontend
+- Keep both terminals open while using the application
+
+## 🔌 API Examples
+
+### Sample GraphQL Queries
+
+**Fetch All Employees:**
+```graphql
+query GetEmployees {
+  employees {
+    id
+    name
+    age
+    maxHoursPerDay
+    role
+    availability {
+      dayOfWeek
+      isAvailable
+    }
+  }
+}
+```
+
+**Generate Schedule:**
+```graphql
+mutation GenerateSchedule($weekStart: String!, $scheduleType: String!) {
+  generateSchedule(weekStart: $weekStart, scheduleType: $scheduleType) {
+    success
+    message
+    shifts {
+      id
+      employeeName
+      locationName
+      startTime
+      endTime
+    }
+  }
+}
+```
+
+**Publish Schedule:**
+```graphql
+mutation PublishSchedule($weekStart: String!) {
+  publishSchedule(weekStart: $weekStart) {
+    success
+    message
+    publishedShifts {
+      id
+      employeeName
+      locationName
+      startTime
+      endTime
+    }
+  }
+}
+```
+
+## 👨‍💻 Development Workflow
+
+### Code Style
+- **Backend**: Follow PEP 8 with Black formatter
+- **Frontend**: Use Prettier for code formatting
+- **TypeScript**: Strict mode enabled
+
+### Git Workflow
+```bash
+# Create feature branch
+git checkout -b feature/new-schedule-type
+
+# Make changes and test
+npm test  # Frontend tests
+pytest    # Backend tests
+
+# Commit with conventional commits
+git commit -m "feat: add new schedule type support"
+
+# Push and create PR
+git push origin feature/new-schedule-type
+```
+
+### Testing Strategy
+- **Unit Tests**: Core business logic
+- **Integration Tests**: API endpoints
+- **E2E Tests**: Critical user workflows
+
+## ⚡ Performance Guidelines
+
+### Expected Performance
+- **Schedule Generation**: < 5 seconds for 50 employees
+- **API Response Time**: < 200ms for standard queries
+- **Frontend Load Time**: < 3 seconds on 3G connection
+
+### Optimization Tips
+- Use pagination for large employee lists
+- Implement caching for frequently accessed data
+- Optimize GraphQL queries to fetch only needed fields
+
+## 🔒 Security Considerations
+
+### Data Protection
+- All employee data is stored locally (SQLite)
+- No external API calls or data transmission
+- Database file should be backed up regularly
+
+### Access Control
+- Currently designed for single-organization use
+- Consider implementing user authentication for multi-tenant scenarios
+- Regular database backups recommended
+
+### Production Deployment
+- Use environment variables for sensitive configuration
+- Implement proper logging and monitoring
+- Consider using PostgreSQL for production databases
+
+## 🚀 Production Deployment
+
+### Environment Setup
+```bash
+# Production environment variables
+DATABASE_URL=postgresql://user:pass@localhost/hospital_scheduler
+DEBUG=False
+LOG_LEVEL=INFO
+CORS_ORIGINS=https://yourdomain.com
+```
+
+### Docker Production
+```bash
+# Build production image
+docker build -t hospital-scheduler:latest .
+
+# Run with production settings
+docker run -d \
+  -p 8000:8000 \
+  -e DATABASE_URL=postgresql://... \
+  -e DEBUG=False \
+  hospital-scheduler:latest
+```
+
+### Monitoring
+- Health check endpoint: `GET /health`
+- Log files location: `logs/`
+- Database backup: `hospital_scheduler_data/`
 
 ## 📁 Project Structure
 
@@ -185,11 +349,18 @@ npm test
 - Ensure Python 3.8+ is installed
 - Check that all dependencies are installed: `pip install -r requirements.txt`
 - Verify the virtual environment is activated
+- **IMPORTANT**: Use PowerShell syntax, not bash syntax
 
 **Frontend won't start:**
 - Ensure Node.js 16+ is installed
 - Run `npm install` in the frontend directory
 - Check for port conflicts (default: 3000)
+- **IMPORTANT**: Start in a separate terminal from backend
+
+**PowerShell syntax errors:**
+- **Problem**: Using `&&` or bash commands in PowerShell
+- **Solution**: Use separate terminal windows for each service
+- **Example**: Don't use `command1 && command2`, use separate terminals
 
 **Database issues:**
 - Delete `hospital_scheduler.db` to reset the database
@@ -199,6 +370,18 @@ npm test
 - Ensure Docker and Docker Compose are installed
 - Check that ports 3000 and 8000 are available
 - Run `docker-compose down` before `docker-compose up --build`
+
+**Port already in use:**
+```powershell
+# Check what's using port 8000
+netstat -ano | findstr :8000
+
+# Check what's using port 3000
+netstat -ano | findstr :3000
+
+# Kill process if needed (replace PID with actual process ID)
+taskkill /PID <PID> /F
+```
 
 ## 🤝 Contributing
 
